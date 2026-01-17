@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Auth Login Response",
+  "type": "object",
+  "required": [
+    "accessToken",
+    "refreshToken",
+    "tokenType"
+  ],
+  "properties": {
+    "accessToken": {
+      "type": "string",
+      "description": "JWT access token",
+      "pattern": "^[A-Za-z0-9-_]+\\.[A-Za-z0-9-_]+\\.[A-Za-z0-9-_]+$"
+    },
+    "refreshToken": {
+      "type": "string",
+      "description": "JWT refresh token",
+      "pattern": "^[A-Za-z0-9-_]+\\.[A-Za-z0-9-_]+\\.[A-Za-z0-9-_]+$"
+    },
+    "tokenType": {
+      "type": "string",
+      "enum": ["Bearer"],
+      "description": "Token type for Authorization header"
+    }
+  },
+  "additionalProperties": false
+}

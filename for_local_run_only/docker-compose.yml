@@ -1,0 +1,280 @@
+# # ВАЖНО: Если хотите чтобы у вас работали функции покупки книг, запрос отзыва и техподдержка, то
+# # перед запуском создайте файл .env в этой же директории где и docker-compose.yml и укажите в нем следующие переменные:
+#
+# # Stripe настройки (STRIPE_SECRET_KEY и STRIPE_WEBHOOK_SECRET можно получить на https://dashboard.stripe.com,
+# # в противном случае не будет работать оплата по картам, но приложение будет работать и без этго)
+# # Кроме того, необходимо установить webhook (ваш IP адрес и порт, на котором запущен сервер) в Stripe Dashboard и натроить редирект на вашем роутере,
+# # чтобы Stripe мог подключиться к вашему серверу извне.
+# STRIPE_SECRET_KEY=sk_test_...
+# STRIPE_WEBHOOK_SECRET=whsec_...
+#
+# # API ключи (OpenAI API ключ можно получить на https://platform.openai.com/settings/organization/api-keys (это бесплатно
+# # в случае проставления галки Enable for all projects по ссылке https://platform.openai.com/settings/organization/data-controls/sharing))
+# # Gemini API ключ можно получить на https://aistudio.google.com/app/api-keys, но там бесплатная квота очень мала)
+# # Если не указывать API Gemini, то отзывы без цензуры не будут работать
+# OPENAI_API_KEY=sk-proj-...
+# GEMINI_API_KEY=AIzaSy...
+#
+# # Telegram настройки для отправки сообщений в Telegram Bot
+# TELEGRAM_BOT_TOKEN=your-telegram-bot-token...
+# TELEGRAM_CHAT_ID=your-telegram-chat-id...
+
+services:
+  # Zookeeper для Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: kafka-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - spring-library-network
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 2181 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-broker
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka-broker:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168 # 7 дней
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824 # 1GB
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      # Ограничение памяти для Kafka (heap memory)
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
+    networks:
+      - spring-library-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+
+  # Kafka UI - графический интерфейс для просмотра топиков и сообщений
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_started
+    ports:
+      - "8089:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-broker:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      # Аутентификация через Basic Auth
+      AUTH_TYPE: ${KAFKA_UI_AUTH_TYPE:-BASIC}
+      SPRING_SECURITY_USER_NAME: ${KAFKA_UI_USERNAME:-admin}
+      SPRING_SECURITY_USER_PASSWORD: ${KAFKA_UI_PASSWORD:-admin}
+    networks:
+      - spring-library-network
+    restart: unless-stopped
+
+  # MailHog - SMTP сервер для разработки и тестирования email
+  # Веб-интерфейс: http://localhost:8025
+  # SMTP порт: 1025
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: mailhog_email_server
+    ports:
+      - "1025:1025" # SMTP порт
+      - "8025:8025" # Web UI для просмотра писем
+    networks:
+      - spring-library-network
+    restart: unless-stopped
+
+  # Analytics Service
+  analytics-service:
+    image: 01yura/spring-digital-bookstore-analytics-service:latest
+    pull_policy: always
+    container_name: analytics-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8090:8090"
+    environment:
+      # Kafka Configuration
+      KAFKA_BOOTSTRAP_SERVERS: kafka-broker:29092
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-broker:29092
+      KAFKA_CONSUMER_GROUP_ID: analytics-service-group
+      SPRING_KAFKA_CONSUMER_GROUP_ID: analytics-service-group
+      # Server Configuration
+      SERVER_PORT: 8090
+      # Logging
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_ORG_APACHE_KAFKA: WARN
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_KAFKA: INFO
+      LOGGING_LEVEL_ONLINE_ITYURA_ANALYTICS: INFO
+      # Aggregation interval
+      ANALYTICS_AGGREGATION_INTERVAL_MS: ${ANALYTICS_AGGREGATION_INTERVAL_MS:-60000}
+    networks:
+      - spring-library-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:8090/api/analytics/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # React UI приложение
+  ui:
+    image: 01yura/spring-digital-library-ui:with_analytics_and_email_without_https_for_local_run
+    pull_policy: always
+    container_name: spring-digital-bookstore-ui
+    ports:
+      - "80:80"
+    networks:
+      - spring-library-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # PostgreSQL база данных для локального запуска
+  postgres:
+    image: postgres:16-alpine
+    container_name: spring-digital-library-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-spring_digital_bookstore}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
+    ports:
+      - "5432:5432"
+    volumes:
+      # Хранение данных БД на хосте (для Windows используйте формат C:/path/to/dir)
+      - ${POSTGRES_DATA_PATH:-C:/spring-digital-bookstore/postgres_data}:/var/lib/postgresql/data
+    networks:
+      - spring-library-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d spring_digital_bookstore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Spring Boot приложение для локального запуска без HTTPS
+  backend:
+    image: 01yura/spring-digital-bookstore:with_email
+    pull_policy: always
+    container_name: spring-digital-bookstore-app
+    environment:
+      # Настройки подключения к БД
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-spring_digital_bookstore}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-admin}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-admin}
+
+      # JPA/Hibernate настройки
+      SPRING_JPA_DATABASE_PLATFORM: ${SPRING_JPA_DATABASE_PLATFORM:-org.hibernate.dialect.PostgreSQLDialect}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
+      SPRING_JPA_SHOW_SQL: ${SPRING_JPA_SHOW_SQL:-false}
+      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: ${SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL:-true}
+
+      # JWT настройки
+      JWT_SECRET: ${JWT_SECRET:-my-secret-key-for-jwt-generation}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-300000}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-86400000}
+
+      # Swagger/OpenAPI настройки
+      SPRINGDOC_API_DOCS_PATH: ${SPRINGDOC_API_DOCS_PATH:-/v3/api-docs}
+      SPRINGDOC_SWAGGER_UI_PATH: ${SPRINGDOC_SWAGGER_UI_PATH:-/swagger-ui.html}
+      SPRINGDOC_SWAGGER_UI_OPERATIONS_SORTER: ${SPRINGDOC_SWAGGER_UI_OPERATIONS_SORTER:-method}
+      SPRINGDOC_SWAGGER_UI_TAGS_SORTER: ${SPRINGDOC_SWAGGER_UI_TAGS_SORTER:-alpha}
+
+      # JVM настройки
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx512m -Xms512m}
+
+      # Путь для хранения изображений книг (внутри контейнера фиксированный)
+      APP_IMAGES_STORAGE_PATH: /opt/spring-digital-bookstore/pictures
+      # Путь для хранения PDF файлов книг (внутри контейнера фиксированный)
+      APP_PDF_STORAGE_PATH: /opt/spring-digital-bookstore/pdf
+
+      # Frontend URL для редиректа после оплаты
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+
+      # Stripe настройки
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_51Sn9eKF06mQasm4mhBSG71Wes6rz09BTuQicIu37oRIw5agFgZuGMGZQk4IeftRm2aQGJXFma5IPwm1iT77WlALs00VDZNJkEL}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-test-value}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL:-http://localhost/api/v1/payment/success}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL:-http://localhost/api/v1/payment/cancel}
+
+      # OpenAI API настройки
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-test-value}
+
+      # Gemini API настройки
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-test-value}
+
+      # Kafka Configuration для отправки событий
+      KAFKA_BOOTSTRAP_SERVERS: kafka-broker:29092
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-broker:29092
+
+      # Telegram настройки для отправки сообщений в Telegram Bot
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-test-value}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-test-value}
+
+      # SMTP настройки для отправки email через MailHog
+      SPRING_MAIL_HOST: mailhog
+      SPRING_MAIL_PORT: 1025
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
+      SPRING_MAIL_SMTP_AUTH: ${SPRING_MAIL_SMTP_AUTH:-false}
+      SPRING_MAIL_SMTP_STARTTLS_ENABLE: ${SPRING_MAIL_SMTP_STARTTLS_ENABLE:-false}
+      SPRING_MAIL_SMTP_SSL_ENABLE: ${SPRING_MAIL_SMTP_SSL_ENABLE:-false}
+      SPRING_MAIL_FROM: ${SPRING_MAIL_FROM:-noreply@localhost}
+
+      # Base URL для ссылок подтверждения email (должен соответствовать порту, на котором доступен backend)
+      APP_EMAIL_VERIFICATION_BASE_URL: ${APP_EMAIL_VERIFICATION_BASE_URL:-http://localhost:8088}
+
+    ports:
+      - "8088:8080"
+    volumes:
+      # Хранение изображений книг в обычной директории на хосте (для Windows используйте формат C:/path/to/dir)
+      - ${APP_IMAGES_STORAGE_PATH:-C:/spring-digital-bookstore/pictures}:/opt/spring-digital-bookstore/pictures
+      # Хранение PDF файлов книг в обычной директории на хосте (для Windows используйте формат C:/path/to/dir)
+      - ${APP_PDF_STORAGE_PATH:-C:/spring-digital-bookstore/pdf}:/opt/spring-digital-bookstore/pdf
+    networks:
+      - spring-library-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    restart: unless-stopped
+
+networks:
+  spring-library-network:
+    driver: bridge

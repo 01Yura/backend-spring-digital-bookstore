@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Auth Register Response",
+  "type": "object",
+  "required": [
+    "userId",
+    "email",
+    "role"
+  ],
+  "properties": {
+    "userId": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Unique identifier of the registered user"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "User email"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["USER", "ADMIN"],
+      "description": "User role"
+    }
+  },
+  "additionalProperties": false
+}

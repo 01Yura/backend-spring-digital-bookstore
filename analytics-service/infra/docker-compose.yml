@@ -1,0 +1,118 @@
+# Данный docker-compose файл предназначен для запуска Kafka и Kafka UI в Docker контейнерах. Фронт и Бэк не запускаются в этом файле.
+# Их нужно запускать отдельно, через npm start для фронта и кнопкой "Запустить" для бэка.
+# Кроме того нужно не забыть запустить базу данных и MailHog из другого docker-compose файла.
+
+services:
+  # Zookeeper для Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: kafka-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - kafka-network
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 2181 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-broker
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka-broker:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168 # 7 дней
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824 # 1GB
+    networks:
+      - kafka-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # Kafka UI - графический интерфейс для просмотра топиков и сообщений
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_started
+    ports:
+      - "8089:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-broker:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      # Аутентификация через Basic Auth
+      AUTH_TYPE: ${KAFKA_UI_AUTH_TYPE:-BASIC}
+      SPRING_SECURITY_USER_NAME: ${KAFKA_UI_USERNAME:-admin}
+      SPRING_SECURITY_USER_PASSWORD: ${KAFKA_UI_PASSWORD:-admin}
+    networks:
+      - kafka-network
+    restart: unless-stopped
+
+  # Analytics Service
+  analytics-service:
+    image: 01yura/spring-digital-bookstore-analytics-service:latest
+    container_name: analytics-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8090:8090"
+    environment:
+      # Kafka Configuration
+      KAFKA_BOOTSTRAP_SERVERS: kafka-broker:29092
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-broker:29092
+      KAFKA_CONSUMER_GROUP_ID: analytics-service-group
+      SPRING_KAFKA_CONSUMER_GROUP_ID: analytics-service-group
+      # Server Configuration
+      SERVER_PORT: 8090
+      # Logging
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_ORG_APACHE_KAFKA: WARN
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_KAFKA: INFO
+      LOGGING_LEVEL_ONLINE_ITYURA_ANALYTICS: INFO
+    networks:
+      - kafka-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:8090/api/analytics/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+networks:
+  kafka-network:
+    name: spring-digital-library_kafka-network
+    driver: bridge
