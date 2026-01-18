@@ -256,7 +256,11 @@ services:
       # ELK Stack настройки для отправки логов в Logstash
       LOGSTASH_HOST: logstash
       LOGSTASH_PORT: 5000
-      LOGSTASH_ENABLED: ${LOGSTASH_ENABLED:-true}
+
+      # Включить/выключить Logstash (по умолчанию в application.properties выключен)
+      LOGSTASH_ENABLED: "true"
+      # Включить/выключить Kafka (по умолчанию в application.properties выключен)
+      KAFKA_ENABLED: "true"
 
     ports:
       - "8088:8080"

@@ -5,7 +5,7 @@
     <!-- Параметры для приложения -->
     <springProperty scope="context" name="LOGSTASH_HOST" source="logging.logstash.host" defaultValue="logstash"/>
     <springProperty scope="context" name="LOGSTASH_PORT" source="logging.logstash.port" defaultValue="5000"/>
-    <springProperty scope="context" name="LOGSTASH_ENABLED" source="logging.logstash.enabled" defaultValue="true"/>
+    <springProperty scope="context" name="LOGSTASH_ENABLED" source="logging.logstash.enabled" defaultValue="false"/>
     
     <!-- Имя сервиса для различения в ELK -->
     <property name="SERVICE_NAME" value="main-app"/>
@@ -16,7 +16,7 @@
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
             <customFields>{"service":"${SERVICE_NAME}","application":"${APPLICATION_NAME}"}</customFields>
             <includeContext>true</includeContext>
-            <includeMdcKeyPrefix>bookId,userId,requestPath,requestMethod,requestId,ipAddress,userAgent,responseTime,statusCode</includeMdcKeyPrefix>
+            <includeMdc>true</includeMdc>
             <includeCallerData>false</includeCallerData>
             <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
         </encoder>
@@ -28,7 +28,7 @@
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
             <customFields>{"service":"${SERVICE_NAME}","application":"${APPLICATION_NAME}"}</customFields>
             <includeContext>true</includeContext>
-            <includeMdcKeyPrefix>bookId,userId,requestPath,requestMethod,requestId,ipAddress,userAgent,responseTime,statusCode</includeMdcKeyPrefix>
+            <includeMdc>true</includeMdc>
             <includeCallerData>false</includeCallerData>
             <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
         </encoder>
@@ -41,30 +41,35 @@
     
     <!-- Logstash TCP Appender - для отправки логов в Logstash -->
     <!-- Приложение не должно падать, если Logstash недоступен - используем AsyncAppender с neverBlock -->
-    <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
-        <destination>${LOGSTASH_HOST}:${LOGSTASH_PORT}</destination>
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <customFields>{"service":"${SERVICE_NAME}","application":"${APPLICATION_NAME}"}</customFields>
-            <includeContext>true</includeContext>
-            <includeMdcKeyPrefix>bookId,userId,requestPath,requestMethod,requestId,ipAddress,userAgent,responseTime,statusCode</includeMdcKeyPrefix>
-            <includeCallerData>false</includeCallerData>
-            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
-        </encoder>
-        <keepAliveDuration>5 minutes</keepAliveDuration>
-        <reconnectionDelay>10 seconds</reconnectionDelay>
-        <connectionTimeout>5 seconds</connectionTimeout>
-    </appender>
-    
-    <!-- Async Appender для Logstash - обеспечивает неблокирующую отправку логов -->
-    <!-- neverBlock="true" гарантирует, что приложение не заблокируется, если Logstash недоступен -->
-    <appender name="ASYNC_LOGSTASH" class="ch.qos.logback.classic.AsyncAppender">
-        <appender-ref ref="LOGSTASH"/>
-        <queueSize>512</queueSize>
-        <discardingThreshold>0</discardingThreshold>
-        <neverBlock>true</neverBlock>
-        <!-- Игнорируем ошибки подключения - приложение должно работать без ELK стека -->
-        <includeCallerData>false</includeCallerData>
-    </appender>
+    <!-- Активируется только если LOGSTASH_ENABLED=true -->
+    <if condition='isDefined("LOGSTASH_ENABLED") &amp;&amp; property("LOGSTASH_ENABLED").equals("true")'>
+        <then>
+            <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+                <destination>${LOGSTASH_HOST}:${LOGSTASH_PORT}</destination>
+                <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                    <customFields>{"service":"${SERVICE_NAME}","application":"${APPLICATION_NAME}"}</customFields>
+                    <includeContext>true</includeContext>
+                    <includeMdc>true</includeMdc>
+                    <includeCallerData>false</includeCallerData>
+                    <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
+                </encoder>
+                <keepAliveDuration>5 minutes</keepAliveDuration>
+                <reconnectionDelay>10 seconds</reconnectionDelay>
+                <connectionTimeout>5 seconds</connectionTimeout>
+            </appender>
+            
+            <!-- Async Appender для Logstash - обеспечивает неблокирующую отправку логов -->
+            <!-- neverBlock="true" гарантирует, что приложение не заблокируется, если Logstash недоступен -->
+            <appender name="ASYNC_LOGSTASH" class="ch.qos.logback.classic.AsyncAppender">
+                <appender-ref ref="LOGSTASH"/>
+                <queueSize>512</queueSize>
+                <discardingThreshold>0</discardingThreshold>
+                <neverBlock>true</neverBlock>
+                <!-- Игнорируем ошибки подключения - приложение должно работать без ELK стека -->
+                <includeCallerData>false</includeCallerData>
+            </appender>
+        </then>
+    </if>
     
     <!-- Профиль для разработки (dev) - логи в консоль и файл, без Logstash -->
     <springProfile name="dev">
@@ -79,17 +84,25 @@
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
-            <appender-ref ref="ASYNC_LOGSTASH"/>
+            <if condition='isDefined("LOGSTASH_ENABLED") &amp;&amp; property("LOGSTASH_ENABLED").equals("true")'>
+                <then>
+                    <appender-ref ref="ASYNC_LOGSTASH"/>
+                </then>
+            </if>
         </root>
     </springProfile>
     
-    <!-- Профиль по умолчанию (без указания профиля) - логи в консоль, файл и Logstash -->
-    <!-- Logstash appender с ignoreExceptions="true" не будет падать, если Logstash недоступен -->
+    <!-- Профиль по умолчанию (без указания профиля) - логи в консоль и файл -->
+    <!-- Logstash включается только если LOGSTASH_ENABLED=true -->
     <springProfile name="!dev,!prod">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
-            <appender-ref ref="ASYNC_LOGSTASH"/>
+            <if condition='isDefined("LOGSTASH_ENABLED") &amp;&amp; property("LOGSTASH_ENABLED").equals("true")'>
+                <then>
+                    <appender-ref ref="ASYNC_LOGSTASH"/>
+                </then>
+            </if>
         </root>
     </springProfile>
     
