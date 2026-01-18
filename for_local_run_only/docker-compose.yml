@@ -11,7 +11,6 @@
 # # Telegram настройки для отправки сообщений в Telegram Bot
 # TELEGRAM_BOT_TOKEN=your-telegram-bot-token...
 # TELEGRAM_CHAT_ID=your-telegram-chat-id...
-
 services:
   # Zookeeper для Kafka
   zookeeper:
