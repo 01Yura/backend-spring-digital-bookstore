@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <!-- Параметры для приложения -->
+    <springProperty scope="context" name="LOGSTASH_HOST" source="logging.logstash.host" defaultValue="logstash"/>
+    <springProperty scope="context" name="LOGSTASH_PORT" source="logging.logstash.port" defaultValue="5000"/>
+    <springProperty scope="context" name="LOGSTASH_ENABLED" source="logging.logstash.enabled" defaultValue="true"/>
+    
+    <!-- Имя сервиса для различения в ELK -->
+    <property name="SERVICE_NAME" value="main-app"/>
+    <property name="APPLICATION_NAME" value="spring-digital-library"/>
+    
+    <!-- Console Appender - для вывода в консоль (всегда активен) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"service":"${SERVICE_NAME}","application":"${APPLICATION_NAME}"}</customFields>
+            <includeContext>true</includeContext>
+            <includeCallerData>false</includeCallerData>
+            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
+        </encoder>
+    </appender>
+    
+    <!-- File Appender - для сохранения логов в файл (опционально) -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/${APPLICATION_NAME}.log</file>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"service":"${SERVICE_NAME}","application":"${APPLICATION_NAME}"}</customFields>
+            <includeContext>true</includeContext>
+            <includeCallerData>false</includeCallerData>
+            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/${APPLICATION_NAME}-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+    
+    <!-- Logstash TCP Appender - для отправки логов в Logstash -->
+    <!-- Приложение не должно падать, если Logstash недоступен - используем AsyncAppender с neverBlock -->
+    <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+        <destination>${LOGSTASH_HOST}:${LOGSTASH_PORT}</destination>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"service":"${SERVICE_NAME}","application":"${APPLICATION_NAME}"}</customFields>
+            <includeContext>true</includeContext>
+            <includeCallerData>false</includeCallerData>
+            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
+        </encoder>
+        <keepAliveDuration>5 minutes</keepAliveDuration>
+        <reconnectionDelay>10 seconds</reconnectionDelay>
+        <connectionTimeout>5 seconds</connectionTimeout>
+    </appender>
+    
+    <!-- Async Appender для Logstash - обеспечивает неблокирующую отправку логов -->
+    <!-- neverBlock="true" гарантирует, что приложение не заблокируется, если Logstash недоступен -->
+    <appender name="ASYNC_LOGSTASH" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="LOGSTASH"/>
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <!-- Игнорируем ошибки подключения - приложение должно работать без ELK стека -->
+        <includeCallerData>false</includeCallerData>
+    </appender>
+    
+    <!-- Профиль для разработки (dev) - логи в консоль и файл, без Logstash -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+    
+    <!-- Профиль для продакшена (prod) - логи в Logstash, файл и консоль -->
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ASYNC_LOGSTASH"/>
+        </root>
+    </springProfile>
+    
+    <!-- Профиль по умолчанию (без указания профиля) - логи в консоль, файл и Logstash -->
+    <!-- Logstash appender с ignoreExceptions="true" не будет падать, если Logstash недоступен -->
+    <springProfile name="!dev,!prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ASYNC_LOGSTASH"/>
+        </root>
+    </springProfile>
+    
+    <!-- Уровни логирования для конкретных пакетов -->
+    <logger name="online.ityura.springdigitallibrary" level="INFO"/>
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.apache.kafka" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+    
+</configuration>

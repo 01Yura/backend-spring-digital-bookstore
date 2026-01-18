@@ -1,12 +1,5 @@
-# # ВАЖНО: Если хотите чтобы у вас работали функции покупки книг, запрос отзыва и техподдержка, то
+# # ВАЖНО: Если хотите чтобы у вас работали функции запрос отзыва и техподдержка, то
 # # перед запуском создайте файл .env в этой же директории где и docker-compose.yml и укажите в нем следующие переменные:
-#
-# # Stripe настройки (STRIPE_SECRET_KEY и STRIPE_WEBHOOK_SECRET можно получить на https://dashboard.stripe.com,
-# # в противном случае не будет работать оплата по картам, но приложение будет работать и без этго)
-# # Кроме того, необходимо установить webhook (ваш IP адрес и порт, на котором запущен сервер) в Stripe Dashboard и натроить редирект на вашем роутере,
-# # чтобы Stripe мог подключиться к вашему серверу извне.
-# STRIPE_SECRET_KEY=sk_test_...
-# STRIPE_WEBHOOK_SECRET=whsec_...
 #
 # # API ключи (OpenAI API ключ можно получить на https://platform.openai.com/settings/organization/api-keys (это бесплатно
 # # в случае проставления галки Enable for all projects по ссылке https://platform.openai.com/settings/organization/data-controls/sharing))
@@ -113,7 +106,7 @@ services:
 
   # Analytics Service
   analytics-service:
-    image: 01yura/spring-digital-bookstore-analytics-service:latest
+    image: 01yura/spring-digital-bookstore-analytics-service:elk
     pull_policy: always
     container_name: analytics-service
     depends_on:
@@ -136,6 +129,10 @@ services:
       LOGGING_LEVEL_ONLINE_ITYURA_ANALYTICS: INFO
       # Aggregation interval
       ANALYTICS_AGGREGATION_INTERVAL_MS: ${ANALYTICS_AGGREGATION_INTERVAL_MS:-60000}
+      # ELK Stack настройки для отправки логов в Logstash
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 5000
+      LOGSTASH_ENABLED: ${LOGSTASH_ENABLED:-true}
     networks:
       - spring-library-network
     restart: unless-stopped
@@ -187,7 +184,7 @@ services:
 
   # Spring Boot приложение для локального запуска без HTTPS
   backend:
-    image: 01yura/spring-digital-bookstore:with_email
+    image: 01yura/spring-digital-bookstore:elk
     pull_policy: always
     container_name: spring-digital-bookstore-app
     environment:
@@ -257,6 +254,11 @@ services:
       # Base URL для ссылок подтверждения email (должен соответствовать порту, на котором доступен backend)
       APP_EMAIL_VERIFICATION_BASE_URL: ${APP_EMAIL_VERIFICATION_BASE_URL:-http://localhost:8088}
 
+      # ELK Stack настройки для отправки логов в Logstash
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 5000
+      LOGSTASH_ENABLED: ${LOGSTASH_ENABLED:-true}
+
     ports:
       - "8088:8080"
     volumes:
@@ -273,6 +275,99 @@ services:
         condition: service_healthy
       mailhog:
         condition: service_started
+    restart: unless-stopped
+
+  # Elasticsearch для хранения логов
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      # Увеличиваем память до 1GB для стабильной работы
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      # Отключаем memory_lock для Windows/Docker (может не работать)
+      - bootstrap.memory_lock=false
+      # Настройки для более быстрой работы в dev окружении
+      - action.auto_create_index=true
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - ${ELASTICSEARCH_DATA_PATH:-C:/spring-digital-bookstore/elasticsearch_data}:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - spring-library-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=30s || exit 1",
+        ]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+
+  # Logstash для приема и обработки логов
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ../infra/logstash/pipeline:/usr/share/logstash/pipeline
+      - ../infra/logstash/config:/usr/share/logstash/config
+    ports:
+      - "5000:5000"
+      - "5044:5044"
+      - "9600:9600"
+    environment:
+      - "LS_JAVA_OPTS=-Xmx256m -Xms256m"
+    networks:
+      - spring-library-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600/_node/stats || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # Kibana для визуализации логов
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      # Увеличиваем таймауты для создания индексов
+      - ELASTICSEARCH_REQUEST_TIMEOUT=120000
+      # Настройки для более быстрого старта
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=changeme-changeme-changeme-changeme
+      - XPACK_REPORTING_ENCRYPTIONKEY=changeme-changeme-changeme-changeme
+      - XPACK_SECURITY_ENCRYPTIONKEY=changeme-changeme-changeme-changeme
+    networks:
+      - spring-library-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
     restart: unless-stopped
 
 networks:

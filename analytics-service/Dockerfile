@@ -25,6 +25,9 @@ RUN mvn clean install -DskipTests -pl common-dto,analytics-service -am
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
+# Создаем директорию для логов
+RUN mkdir -p /app/logs
+
 # Копируем JAR файл
 COPY --from=build /app/analytics-service/target/analytics-service-*.jar app.jar
 

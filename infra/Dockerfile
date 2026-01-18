@@ -40,7 +40,9 @@ COPY main-app/src/main/resources/pdf /opt/spring-digital-bookstore/pdf-source
 # Если volume будет смонтирован, эти директории будут использованы как точки монтирования
 RUN mkdir -p /opt/spring-digital-bookstore/pictures && \
     mkdir -p /opt/spring-digital-bookstore/pdf && \
-    chown -R spring:spring /opt/spring-digital-bookstore
+    mkdir -p /app/logs && \
+    chown -R spring:spring /opt/spring-digital-bookstore && \
+    chown -R spring:spring /app/logs
 
 # Копируем JAR файл из этапа сборки
 COPY --from=build /app/main-app/target/main-app-*.jar app.jar
