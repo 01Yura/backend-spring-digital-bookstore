@@ -71,8 +71,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
         
-        // Пропускаем эндпоинты верификации email без проверки JWT
-        if (requestPath.equals("/api/v1/auth/verify-email") || requestPath.equals("/api/v1/auth/resend-verification")) {
+        // Пропускаем эндпоинты верификации email и восстановления пароля без проверки JWT
+        if (requestPath.equals("/api/v1/auth/verify-email") || 
+            requestPath.equals("/api/v1/auth/resend-verification") ||
+            requestPath.equals("/api/v1/auth/forgot-password") ||
+            requestPath.equals("/api/v1/auth/reset-password")) {
             filterChain.doFilter(request, response);
             return;
         }

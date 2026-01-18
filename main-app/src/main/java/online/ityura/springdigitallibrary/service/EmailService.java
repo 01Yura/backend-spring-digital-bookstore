@@ -31,7 +31,7 @@ public class EmailService {
             helper.setTo(toEmail);
             helper.setSubject("Подтвердите ваш email");
             
-            String verificationUrl = baseUrl + "/verify-email?token=" + verificationToken;
+            String verificationUrl = baseUrl + "/api/v1/auth/verify-email?token=" + verificationToken;
             
             String htmlContent = buildVerificationEmailHtml(toEmail, verificationUrl);
             String textContent = buildVerificationEmailText(verificationUrl);
@@ -94,7 +94,7 @@ public class EmailService {
             helper.setTo(toEmail);
             helper.setSubject("Восстановление пароля");
             
-            String resetUrl = baseUrl + "/reset-password?token=" + resetToken;
+            String resetUrl = baseUrl + "/api/v1/auth/reset-password?token=" + resetToken;
             
             String htmlContent = buildPasswordResetEmailHtml(toEmail, resetUrl);
             String textContent = buildPasswordResetEmailText(resetUrl);
