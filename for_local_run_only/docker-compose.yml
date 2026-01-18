@@ -251,7 +251,7 @@ services:
       SPRING_MAIL_FROM: ${SPRING_MAIL_FROM:-noreply@localhost}
 
       # Base URL для ссылок подтверждения email (должен соответствовать порту, на котором доступен backend)
-      APP_EMAIL_VERIFICATION_BASE_URL: ${APP_EMAIL_VERIFICATION_BASE_URL:-http://localhost:8088}
+      APP_EMAIL_VERIFICATION_BASE_URL: ${APP_EMAIL_VERIFICATION_BASE_URL:-http://localhost}
 
       # ELK Stack настройки для отправки логов в Logstash
       LOGSTASH_HOST: logstash
