@@ -125,6 +125,9 @@ public class SecurityConfig {
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         
+        // LoggingContextFilter автоматически регистрируется через @Component
+        // и выполняется после JwtAuthenticationFilter благодаря @Order(2)
+        
         return http.build();
     }
 }
