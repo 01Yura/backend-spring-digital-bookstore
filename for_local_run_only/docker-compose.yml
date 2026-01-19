@@ -429,16 +429,47 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      # Монтировать конфигурацию Prometheus
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       # Volume для хранения данных Prometheus (опционально для персистентности)
       - ${PROMETHEUS_DATA_PATH:-C:/spring-digital-bookstore/prometheus_data}:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d" # Хранить метрики 15 дней
-      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
-      - "--web.console.templates=/usr/share/prometheus/consoles"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cat > /etc/prometheus/prometheus.yml << 'PROMETHEUS_EOF'
+        global:
+          scrape_interval: 15s
+          evaluation_interval: 15s
+          external_labels:
+            cluster: 'local'
+            environment: 'development'
+        rule_files:
+        scrape_configs:
+          - job_name: 'prometheus'
+            static_configs:
+              - targets: ['localhost:9090']
+                labels:
+                  service: 'prometheus'
+          - job_name: 'backend'
+            metrics_path: '/actuator/prometheus'
+            static_configs:
+              - targets: ['backend:8080']
+                labels:
+                  service: 'backend'
+                  application: 'spring-digital-library'
+            scrape_interval: 10s
+          - job_name: 'analytics-service'
+            metrics_path: '/actuator/prometheus'
+            static_configs:
+              - targets: ['analytics-service:8090']
+                labels:
+                  service: 'analytics-service'
+                  application: 'analytics-service'
+            scrape_interval: 10s
+          - job_name: 'windows'
+            static_configs:
+              - targets: ['192.168.0.22:9182']
+        PROMETHEUS_EOF
+        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=15d --web.console.libraries=/usr/share/prometheus/console_libraries --web.console.templates=/usr/share/prometheus/consoles
     networks:
       - spring-library-network
     depends_on:
@@ -475,11 +506,43 @@ services:
     volumes:
       # Volume для хранения данных Grafana (дашборды, настройки)
       - ${GRAFANA_DATA_PATH:-C:/spring-digital-bookstore/grafana_data}:/var/lib/grafana
-      # Автоматическая настройка datasource (опционально)
-      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       # Автоматическая загрузка дашбордов (опционально)
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards
+        cat > /etc/grafana/provisioning/datasources/prometheus.yml << 'DATASOURCE_EOF'
+        apiVersion: 1
+
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            access: proxy
+            url: http://prometheus:9090
+            isDefault: true
+            editable: true
+            jsonData:
+              timeInterval: "15s"
+              httpMethod: POST
+        DATASOURCE_EOF
+        cat > /etc/grafana/provisioning/dashboards/dashboards.yml << 'DASHBOARDS_EOF'
+        apiVersion: 1
+
+        providers:
+          - name: 'Default'
+            orgId: 1
+            folder: ''
+            type: file
+            disableDeletion: false
+            updateIntervalSeconds: 10
+            allowUiUpdates: true
+            options:
+              path: /var/lib/grafana/dashboards
+              foldersFromFilesStructure: true
+        DASHBOARDS_EOF
+        exec /run.sh
     networks:
       - spring-library-network
     depends_on:

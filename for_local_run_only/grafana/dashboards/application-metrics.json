@@ -3,6 +3,7 @@
   "id": null,
   "uid": "application-metrics",
     "tags": ["spring-boot", "prometheus", "application"],
+    "description": "Дашборд для мониторинга метрик Spring Boot приложения: HTTP запросы, производительность, JVM, база данных, Kafka",
     "timezone": "browser",
     "schemaVersion": 38,
     "version": 1,
@@ -13,6 +14,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
         "type": "timeseries",
         "title": "HTTP Request Rate (requests/sec)",
+        "description": "Общая скорость обработки HTTP запросов (requests per second). Метрика: http_server_requests_seconds_count - количество всех HTTP запросов, rate вычисляет скорость за 5 минут",
         "targets": [
           {
             "expr": "sum(rate(http_server_requests_seconds_count[5m])) by (job)",
@@ -61,6 +63,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "type": "timeseries",
         "title": "HTTP Request Rate by Status",
+        "description": "Скорость HTTP запросов, разбитая по статус-кодам: 200 OK (успешные), 4xx (ошибки клиента), 5xx (ошибки сервера). Помогает отслеживать долю успешных и проблемных запросов",
         "targets": [
           {
             "expr": "sum(rate(http_server_requests_seconds_count{status=\"200\"}[5m])) by (job)",
@@ -120,6 +123,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
         "type": "timeseries",
         "title": "HTTP Error Rate (4xx & 5xx)",
+        "description": "Скорость возникновения HTTP ошибок: 4xx (ошибки клиента, например 404, 400) и 5xx (ошибки сервера, например 500, 503). Метрики: http_errors_4xx_total и http_errors_5xx_total",
         "targets": [
           {
             "expr": "sum(rate(http_errors_4xx_total[5m])) by (job)",
@@ -174,6 +178,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
         "type": "timeseries",
         "title": "Response Time (p95, p99)",
+        "description": "Время отклика HTTP запросов: p95 (95% запросов быстрее этого значения) и p99 (99% запросов быстрее). Вычисляется из гистограммы http_server_requests_seconds_bucket. Пороги: желтый при 0.5с, красный при 1с",
         "targets": [
           {
             "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job))",
@@ -230,6 +235,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
         "type": "timeseries",
         "title": "JVM Heap Memory Usage",
+        "description": "Использование heap памяти JVM в процентах: Used (используемая память) и Committed (выделенная JVM память). Метрики: jvm_memory_used_bytes, jvm_memory_committed_bytes, jvm_memory_max_bytes. Пороги: желтый при 70%, красный при 85%",
         "targets": [
           {
             "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) by (job) / sum(jvm_memory_max_bytes{area=\"heap\"}) by (job) * 100",
@@ -286,6 +292,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
         "type": "timeseries",
         "title": "JVM Threads",
+        "description": "Количество потоков JVM: Live Threads (текущее количество активных потоков) и Peak Threads (максимальное количество потоков за время работы). Метрики: jvm_threads_live_threads, jvm_threads_peak_threads",
         "targets": [
           {
             "expr": "jvm_threads_live_threads",
@@ -338,6 +345,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
         "type": "timeseries",
         "title": "Database Connection Pool",
+        "description": "Метрики пула соединений HikariCP: Active % (процент активных соединений от максимума), Idle (простаивающие соединения), Pending (запросы в очереди на получение соединения). Метрики: hikaricp_connections_active, hikaricp_connections_idle, hikaricp_connections_pending, hikaricp_connections_max. Пороги: желтый при 80%, красный при 95%",
         "targets": [
           {
             "expr": "hikaricp_connections_active / hikaricp_connections_max * 100",
@@ -397,6 +405,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
         "type": "timeseries",
         "title": "Kafka Messages",
+        "description": "Скорость обработки сообщений Kafka: Produced (сообщений отправлено в секунду) и Consumed (сообщений получено в секунду). Метрики: spring_kafka_template_seconds_count (отправка), spring_kafka_listener_seconds_count (получение). Единица измерения: messages per second (msgps)",
         "targets": [
           {
             "expr": "sum(rate(spring_kafka_template_seconds_count{result=\"success\"}[5m])) by (job)",
@@ -449,6 +458,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
         "type": "table",
         "title": "Top 10 Error Endpoints",
+        "description": "Таблица топ-10 эндпоинтов с наибольшим количеством ошибок. Показывает path (путь), status (HTTP статус), error_type (тип ошибки) и скорость ошибок. Метрика: http_errors_by_status_total. Сортировка по убыванию скорости ошибок",
         "targets": [
           {
             "expr": "topk(10, sum by (path, status, error_type) (rate(http_errors_by_status_total[5m])))",
@@ -491,6 +501,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
         "type": "stat",
         "title": "Active Requests",
+        "description": "Текущее количество активных (обрабатываемых в данный момент) HTTP запросов. Метрика: http_server_requests_active_seconds_count. Пороги: желтый при 50, красный при 100 активных запросах",
         "targets": [
           {
             "expr": "sum(http_server_requests_active_seconds_count) by (job)",
@@ -531,6 +542,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
         "type": "timeseries",
         "title": "CPU Usage",
+        "description": "Использование CPU в процентах: Process CPU (использование CPU процессом приложения) и System CPU (общее использование CPU системой). Метрики: process_cpu_usage, system_cpu_usage. Пороги: желтый при 70%, красный при 90%",
         "targets": [
           {
             "expr": "process_cpu_usage * 100",
@@ -587,6 +599,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
         "type": "timeseries",
         "title": "GC Pause Time",
+        "description": "Время пауз сборщика мусора (Garbage Collector): Avg GC Pause (среднее время паузы) и Max GC Pause (максимальное время паузы). Метрики: jvm_gc_pause_seconds_sum, jvm_gc_pause_seconds_count, jvm_gc_pause_seconds_max. Пороги: желтый при 0.1с, красный при 0.5с",
         "targets": [
           {
             "expr": "sum(rate(jvm_gc_pause_seconds_sum[5m])) by (job) / sum(rate(jvm_gc_pause_seconds_count[5m])) by (job)",
