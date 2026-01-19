@@ -92,7 +92,7 @@ services:
 
   # Analytics Service
   analytics-service:
-    image: 01yura/spring-digital-bookstore-analytics-service:elk
+    image: 01yura/spring-digital-bookstore-analytics-service:prometheus
     pull_policy: always
     container_name: analytics-service
     depends_on:
@@ -170,7 +170,7 @@ services:
 
   # Spring Boot приложение для локального запуска без HTTPS
   backend:
-    image: 01yura/spring-digital-bookstore:elk
+    image: 01yura/spring-digital-bookstore:prometheus
     pull_policy: always
     container_name: spring-digital-bookstore-app
     environment:
@@ -345,19 +345,19 @@ services:
         filter {
           # logstash-logback-encoder отправляет JSON напрямую через TCP с codec json_lines
           # Все поля уже доступны напрямую (level, message, service, @timestamp, logger_name, thread_name и т.д.)
-        
+
           # Добавление метаданных для индексации на основе поля service
           mutate {
             add_field => { "[@metadata][index]" => "%{service}-logs-%{+YYYY.MM.dd}" }
           }
-        
+
           # Если service не определен, используем значение по умолчанию
           if ![service] {
             mutate {
               add_field => { "service" => "unknown" }
             }
           }
-        
+
           # Фильтрация чувствительных данных (пароли, токены)
           # Раскомментируйте, если нужно маскировать чувствительные данные
           # mutate {
@@ -377,7 +377,7 @@ services:
             # Или можно использовать фиксированные индексы:
             # index => "%{service}-logs-%{+YYYY.MM.dd}"
           }
-        
+
           # Fallback на stdout для отладки (опционально, можно закомментировать в продакшене)
           stdout {
             codec => rubydebug
@@ -420,6 +420,81 @@ services:
       timeout: 10s
       retries: 10
       start_period: 300s
+    restart: unless-stopped
+
+  # Prometheus для сбора метрик
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      # Монтировать конфигурацию Prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Volume для хранения данных Prometheus (опционально для персистентности)
+      - ${PROMETHEUS_DATA_PATH:-C:/spring-digital-bookstore/prometheus_data}:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d" # Хранить метрики 15 дней
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    networks:
+      - spring-library-network
+    depends_on:
+      backend:
+        condition: service_started
+      analytics-service:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Grafana для визуализации метрик
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      # Настройки администратора Grafana
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Отключить вход через Google/GitHub (для локальной разработки)
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Настройки для автоматической настройки datasource
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      # Volume для хранения данных Grafana (дашборды, настройки)
+      - ${GRAFANA_DATA_PATH:-C:/spring-digital-bookstore/grafana_data}:/var/lib/grafana
+      # Автоматическая настройка datasource (опционально)
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      # Автоматическая загрузка дашбордов (опционально)
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - spring-library-network
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
 
 networks:

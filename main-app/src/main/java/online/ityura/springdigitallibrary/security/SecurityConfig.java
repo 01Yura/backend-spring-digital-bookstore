@@ -54,6 +54,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v1/health").permitAll()
+                .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/api/v1/kuberinfo").permitAll()
                 .requestMatchers("/api/v1/payment/webhook").permitAll()
                 .requestMatchers("/api/v1/payment/success").permitAll()

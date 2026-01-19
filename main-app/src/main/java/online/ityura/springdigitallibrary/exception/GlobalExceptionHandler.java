@@ -3,6 +3,7 @@ package online.ityura.springdigitallibrary.exception;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
 import online.ityura.springdigitallibrary.dto.response.ErrorResponse;
+import online.ityura.springdigitallibrary.metrics.MetricsService;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -22,6 +23,12 @@ import java.util.Map;
 @Hidden
 public class GlobalExceptionHandler {
     
+    private final MetricsService metricsService;
+    
+    public GlobalExceptionHandler(MetricsService metricsService) {
+        this.metricsService = metricsService;
+    }
+    
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ErrorResponse> handleResponseStatusException(
             ResponseStatusException ex, 
@@ -37,6 +44,14 @@ public class GlobalExceptionHandler {
                 .timestamp(Instant.now())
                 .path(request.getRequestURI())
                 .build();
+        
+        // Добавить метрику
+        metricsService.incrementErrorCounter(
+            status.value(), 
+            request.getRequestURI(), 
+            request.getMethod(),
+            errorCode
+        );
         
         return ResponseEntity.status(status)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -56,6 +71,14 @@ public class GlobalExceptionHandler {
                 .timestamp(Instant.now())
                 .path(request.getRequestURI())
                 .build();
+        
+        // Добавить метрику
+        metricsService.incrementErrorCounter(
+            HttpStatus.INTERNAL_SERVER_ERROR.value(), 
+            request.getRequestURI(), 
+            request.getMethod(),
+            "INTERNAL_SERVER_ERROR"
+        );
         
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -81,6 +104,14 @@ public class GlobalExceptionHandler {
                 .timestamp(Instant.now())
                 .path(request.getRequestURI())
                 .build();
+        
+        // Добавить метрику
+        metricsService.incrementErrorCounter(
+            HttpStatus.BAD_REQUEST.value(), 
+            request.getRequestURI(), 
+            request.getMethod(),
+            "VALIDATION_ERROR"
+        );
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -124,6 +155,14 @@ public class GlobalExceptionHandler {
                 .timestamp(Instant.now())
                 .path(request.getRequestURI())
                 .build();
+        
+        // Добавить метрику
+        metricsService.incrementErrorCounter(
+            HttpStatus.BAD_REQUEST.value(), 
+            request.getRequestURI(), 
+            request.getMethod(),
+            errorCode
+        );
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .contentType(MediaType.APPLICATION_JSON)
