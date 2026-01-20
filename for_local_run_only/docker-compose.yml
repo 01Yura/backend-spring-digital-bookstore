@@ -503,16 +503,11 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       # Настройки для автоматической настройки datasource
       GF_INSTALL_PLUGINS: ""
-    volumes:
-      # Volume для хранения данных Grafana (дашборды, настройки)
-      - ${GRAFANA_DATA_PATH:-C:/spring-digital-bookstore/grafana_data}:/var/lib/grafana
-      # Автоматическая загрузка дашбордов (опционально)
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     entrypoint:
       - /bin/sh
       - -c
       - |
-        mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards
+        mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards
         cat > /etc/grafana/provisioning/datasources/prometheus.yml << 'DATASOURCE_EOF'
         apiVersion: 1
 
@@ -542,6 +537,678 @@ services:
               path: /var/lib/grafana/dashboards
               foldersFromFilesStructure: true
         DASHBOARDS_EOF
+        cat > /var/lib/grafana/dashboards/application-metrics.json << 'DASHBOARD_JSON_EOF'
+        {
+          "title": "Application Metrics Dashboard",
+          "id": null,
+          "uid": "application-metrics",
+          "tags": ["spring-boot", "prometheus", "application"],
+          "description": "Дашборд для мониторинга метрик Spring Boot приложения: HTTP запросы, производительность, JVM, база данных, Kafka",
+          "timezone": "browser",
+          "schemaVersion": 38,
+          "version": 1,
+          "refresh": "10s",
+          "panels": [
+            {
+              "id": 1,
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+              "type": "timeseries",
+              "title": "HTTP Request Rate (requests/sec)",
+              "description": "Общая скорость обработки HTTP запросов (requests per second). Метрика: http_server_requests_seconds_count - количество всех HTTP запросов, rate вычисляет скорость за 5 минут",
+              "targets": [
+                {
+                  "expr": "sum(rate(http_server_requests_seconds_count[5m])) by (job)",
+                  "refId": "A",
+                  "legendFormat": "{{job}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "off"}
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "red", "value": 100}
+                    ]
+                  },
+                  "unit": "reqps"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 2,
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+              "type": "timeseries",
+              "title": "HTTP Request Rate by Status",
+              "description": "Скорость HTTP запросов, разбитая по статус-кодам: 200 OK (успешные), 4xx (ошибки клиента), 5xx (ошибки сервера). Помогает отслеживать долю успешных и проблемных запросов",
+              "targets": [
+                {
+                  "expr": "sum(rate(http_server_requests_seconds_count{status=\"200\"}[5m])) by (job)",
+                  "refId": "A",
+                  "legendFormat": "{{job}} - 200 OK"
+                },
+                {
+                  "expr": "sum(rate(http_server_requests_seconds_count{status=~\"4..\"}[5m])) by (job)",
+                  "refId": "B",
+                  "legendFormat": "{{job}} - 4xx"
+                },
+                {
+                  "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) by (job)",
+                  "refId": "C",
+                  "legendFormat": "{{job}} - 5xx"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "off"}
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "yellow", "value": 10},
+                      {"color": "red", "value": 50}
+                    ]
+                  },
+                  "unit": "reqps"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 3,
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+              "type": "timeseries",
+              "title": "HTTP Error Rate (4xx & 5xx)",
+              "description": "Скорость возникновения HTTP ошибок: 4xx (ошибки клиента, например 404, 400) и 5xx (ошибки сервера, например 500, 503). Метрики: http_errors_4xx_total и http_errors_5xx_total",
+              "targets": [
+                {
+                  "expr": "sum(rate(http_errors_4xx_total[5m])) by (job)",
+                  "refId": "A",
+                  "legendFormat": "{{job}} - 4xx Errors"
+                },
+                {
+                  "expr": "sum(rate(http_errors_5xx_total[5m])) by (job)",
+                  "refId": "B",
+                  "legendFormat": "{{job}} - 5xx Errors"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 2,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "off"}
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "yellow", "value": 0.1},
+                      {"color": "red", "value": 1}
+                    ]
+                  },
+                  "unit": "reqps"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 4,
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+              "type": "timeseries",
+              "title": "Response Time (p95, p99)",
+              "description": "Время отклика HTTP запросов: p95 (95% запросов быстрее этого значения) и p99 (99% запросов быстрее). Вычисляется из гистограммы http_server_requests_seconds_bucket. Пороги: желтый при 0.5с, красный при 1с",
+              "targets": [
+                {
+                  "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job))",
+                  "refId": "A",
+                  "legendFormat": "{{job}} - p95"
+                },
+                {
+                  "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job))",
+                  "refId": "B",
+                  "legendFormat": "{{job}} - p99"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 2,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "line"}
+                  },
+                  "mappings": [],
+                  "max": 5,
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "yellow", "value": 0.5},
+                      {"color": "red", "value": 1}
+                    ]
+                  },
+                  "unit": "s"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 5,
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+              "type": "timeseries",
+              "title": "JVM Heap Memory Usage",
+              "description": "Использование heap памяти JVM в процентах: Used (используемая память) и Committed (выделенная JVM память). Метрики: jvm_memory_used_bytes, jvm_memory_committed_bytes, jvm_memory_max_bytes. Пороги: желтый при 70%, красный при 85%",
+              "targets": [
+                {
+                  "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) by (job) / sum(jvm_memory_max_bytes{area=\"heap\"}) by (job) * 100",
+                  "refId": "A",
+                  "legendFormat": "{{job}} - Used"
+                },
+                {
+                  "expr": "sum(jvm_memory_committed_bytes{area=\"heap\"}) by (job) / sum(jvm_memory_max_bytes{area=\"heap\"}) by (job) * 100",
+                  "refId": "B",
+                  "legendFormat": "{{job}} - Committed"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 20,
+                    "gradientMode": "opacity",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "area"}
+                  },
+                  "mappings": [],
+                  "max": 100,
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "yellow", "value": 70},
+                      {"color": "red", "value": 85}
+                    ]
+                  },
+                  "unit": "percent"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 6,
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+              "type": "timeseries",
+              "title": "JVM Threads",
+              "description": "Количество потоков JVM: Live Threads (текущее количество активных потоков) и Peak Threads (максимальное количество потоков за время работы). Метрики: jvm_threads_live_threads, jvm_threads_peak_threads",
+              "targets": [
+                {
+                  "expr": "jvm_threads_live_threads",
+                  "refId": "A",
+                  "legendFormat": "{{job}} - Live Threads"
+                },
+                {
+                  "expr": "jvm_threads_peak_threads",
+                  "refId": "B",
+                  "legendFormat": "{{job}} - Peak Threads"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "off"}
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null}
+                    ]
+                  },
+                  "unit": "short"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 7,
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+              "type": "timeseries",
+              "title": "Database Connection Pool",
+              "description": "Метрики пула соединений HikariCP: Active % (процент активных соединений от максимума), Idle (простаивающие соединения), Pending (запросы в очереди на получение соединения). Метрики: hikaricp_connections_active, hikaricp_connections_idle, hikaricp_connections_pending, hikaricp_connections_max. Пороги: желтый при 80%, красный при 95%",
+              "targets": [
+                {
+                  "expr": "hikaricp_connections_active / hikaricp_connections_max * 100",
+                  "refId": "A",
+                  "legendFormat": "{{pool}} - Active %"
+                },
+                {
+                  "expr": "hikaricp_connections_idle",
+                  "refId": "B",
+                  "legendFormat": "{{pool}} - Idle"
+                },
+                {
+                  "expr": "hikaricp_connections_pending",
+                  "refId": "C",
+                  "legendFormat": "{{pool}} - Pending"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "line"}
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "yellow", "value": 80},
+                      {"color": "red", "value": 95}
+                    ]
+                  },
+                  "unit": "percent"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 8,
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+              "type": "timeseries",
+              "title": "Kafka Messages",
+              "description": "Скорость обработки сообщений Kafka: Produced (сообщений отправлено в секунду) и Consumed (сообщений получено в секунду). Метрики: spring_kafka_template_seconds_count (отправка), spring_kafka_listener_seconds_count (получение). Единица измерения: messages per second (msgps)",
+              "targets": [
+                {
+                  "expr": "sum(rate(spring_kafka_template_seconds_count{result=\"success\"}[5m])) by (job)",
+                  "refId": "A",
+                  "legendFormat": "{{job}} - Produced"
+                },
+                {
+                  "expr": "sum(rate(spring_kafka_listener_seconds_count{result=\"success\"}[5m])) by (job)",
+                  "refId": "B",
+                  "legendFormat": "{{job}} - Consumed"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "off"}
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null}
+                    ]
+                  },
+                  "unit": "msgps"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 9,
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+              "type": "table",
+              "title": "Top 10 Error Endpoints",
+              "description": "Таблица топ-10 эндпоинтов с наибольшим количеством ошибок. Показывает path (путь), status (HTTP статус), error_type (тип ошибки) и скорость ошибок. Метрика: http_errors_by_status_total. Сортировка по убыванию скорости ошибок",
+              "targets": [
+                {
+                  "expr": "topk(10, sum by (path, status, error_type) (rate(http_errors_by_status_total[5m])))",
+                  "refId": "A",
+                  "format": "table",
+                  "instant": true
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null}
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "sortBy": [
+                  {
+                    "desc": true,
+                    "displayName": "Value"
+                  }
+                ]
+              }
+            },
+            {
+              "id": 10,
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+              "type": "stat",
+              "title": "Active Requests",
+              "description": "Текущее количество активных (обрабатываемых в данный момент) HTTP запросов. Метрика: http_server_requests_active_seconds_count. Пороги: желтый при 50, красный при 100 активных запросах",
+              "targets": [
+                {
+                  "expr": "sum(http_server_requests_active_seconds_count) by (job)",
+                  "refId": "A",
+                  "legendFormat": "{{job}}"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "thresholds"},
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "yellow", "value": 50},
+                      {"color": "red", "value": 100}
+                    ]
+                  },
+                  "unit": "short"
+                }
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                  "values": false,
+                  "calcs": ["lastNotNull"],
+                  "fields": ""
+                },
+                "textMode": "auto"
+              }
+            },
+            {
+              "id": 11,
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+              "type": "timeseries",
+              "title": "CPU Usage",
+              "description": "Использование CPU в процентах: Process CPU (использование CPU процессом приложения) и System CPU (общее использование CPU системой). Метрики: process_cpu_usage, system_cpu_usage. Пороги: желтый при 70%, красный при 90%",
+              "targets": [
+                {
+                  "expr": "process_cpu_usage * 100",
+                  "refId": "A",
+                  "legendFormat": "{{job}} - Process CPU"
+                },
+                {
+                  "expr": "system_cpu_usage * 100",
+                  "refId": "B",
+                  "legendFormat": "System CPU"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "line"}
+                  },
+                  "mappings": [],
+                  "max": 100,
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "yellow", "value": 70},
+                      {"color": "red", "value": 90}
+                    ]
+                  },
+                  "unit": "percent"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            },
+            {
+              "id": 12,
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+              "type": "timeseries",
+              "title": "GC Pause Time",
+              "description": "Время пауз сборщика мусора (Garbage Collector): Avg GC Pause (среднее время паузы) и Max GC Pause (максимальное время паузы). Метрики: jvm_gc_pause_seconds_sum, jvm_gc_pause_seconds_count, jvm_gc_pause_seconds_max. Пороги: желтый при 0.1с, красный при 0.5с",
+              "targets": [
+                {
+                  "expr": "sum(rate(jvm_gc_pause_seconds_sum[5m])) by (job) / sum(rate(jvm_gc_pause_seconds_count[5m])) by (job)",
+                  "refId": "A",
+                  "legendFormat": "{{job}} - Avg GC Pause"
+                },
+                {
+                  "expr": "jvm_gc_pause_seconds_max",
+                  "refId": "B",
+                  "legendFormat": "{{job}} - Max GC Pause"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {"type": "linear"},
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {"group": "A", "mode": "none"},
+                    "thresholdsStyle": {"mode": "off"}
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "green", "value": null},
+                      {"color": "yellow", "value": 0.1},
+                      {"color": "red", "value": 0.5}
+                    ]
+                  },
+                  "unit": "s"
+                }
+              },
+              "options": {
+                "tooltip": {"mode": "multi"},
+                "legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}
+              }
+            }
+          ],
+          "time": {
+            "from": "now-6h",
+            "to": "now"
+          },
+          "timepicker": {},
+          "templating": {
+            "list": []
+          },
+          "annotations": {
+            "list": []
+          },
+          "editable": true,
+          "fiscalYearStartMonth": 0,
+          "graphTooltip": 0,
+          "links": [],
+          "liveNow": false,
+          "weekStart": ""
+        }
+        DASHBOARD_JSON_EOF
         exec /run.sh
     networks:
       - spring-library-network

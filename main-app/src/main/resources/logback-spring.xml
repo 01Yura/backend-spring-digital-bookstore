@@ -22,23 +22,6 @@
         </encoder>
     </appender>
     
-    <!-- File Appender - для сохранения логов в файл (опционально) -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/${APPLICATION_NAME}.log</file>
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <customFields>{"service":"${SERVICE_NAME}","application":"${APPLICATION_NAME}"}</customFields>
-            <includeContext>true</includeContext>
-            <includeMdc>true</includeMdc>
-            <includeCallerData>false</includeCallerData>
-            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
-        </encoder>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/${APPLICATION_NAME}-%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>30</maxHistory>
-            <totalSizeCap>1GB</totalSizeCap>
-        </rollingPolicy>
-    </appender>
-    
     <!-- Logstash TCP Appender - для отправки логов в Logstash -->
     <!-- Приложение не должно падать, если Logstash недоступен - используем AsyncAppender с neverBlock -->
     <!-- Активируется только если LOGSTASH_ENABLED=true -->
@@ -71,19 +54,17 @@
         </then>
     </if>
     
-    <!-- Профиль для разработки (dev) - логи в консоль и файл, без Logstash -->
+    <!-- Профиль для разработки (dev) - логи в консоль, без Logstash -->
     <springProfile name="dev">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE"/>
         </root>
     </springProfile>
     
-    <!-- Профиль для продакшена (prod) - логи в Logstash, файл и консоль -->
+    <!-- Профиль для продакшена (prod) - логи в Logstash и консоль -->
     <springProfile name="prod">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE"/>
             <if condition='isDefined("LOGSTASH_ENABLED") &amp;&amp; property("LOGSTASH_ENABLED").equals("true")'>
                 <then>
                     <appender-ref ref="ASYNC_LOGSTASH"/>
@@ -92,12 +73,11 @@
         </root>
     </springProfile>
     
-    <!-- Профиль по умолчанию (без указания профиля) - логи в консоль и файл -->
+    <!-- Профиль по умолчанию (без указания профиля) - логи в консоль -->
     <!-- Logstash включается только если LOGSTASH_ENABLED=true -->
     <springProfile name="!dev,!prod">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE"/>
             <if condition='isDefined("LOGSTASH_ENABLED") &amp;&amp; property("LOGSTASH_ENABLED").equals("true")'>
                 <then>
                     <appender-ref ref="ASYNC_LOGSTASH"/>
