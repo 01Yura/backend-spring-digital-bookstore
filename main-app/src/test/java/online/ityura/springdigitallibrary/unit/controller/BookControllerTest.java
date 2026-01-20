@@ -1,9 +1,12 @@
 package online.ityura.springdigitallibrary.unit.controller;
 
 import online.ityura.springdigitallibrary.controller.BookController;
+import online.ityura.springdigitallibrary.dto.response.AuthorResponse;
 import online.ityura.springdigitallibrary.dto.response.BookResponse;
+import online.ityura.springdigitallibrary.repository.UserRepository;
 import online.ityura.springdigitallibrary.service.BookImageService;
 import online.ityura.springdigitallibrary.service.BookService;
+import online.ityura.springdigitallibrary.service.KafkaProducerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,15 +20,18 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.net.URI;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -39,6 +45,15 @@ class BookControllerTest {
     
     @Mock
     private BookImageService bookImageService;
+    
+    @Mock
+    private UserRepository userRepository;
+    
+    @Mock
+    private KafkaProducerService kafkaProducerService;
+    
+    @Mock
+    private Authentication authentication;
     
     @InjectMocks
     private BookController bookController;
@@ -56,6 +71,10 @@ class BookControllerTest {
         BookResponse bookResponse = BookResponse.builder()
                 .id(1L)
                 .title("Test Book")
+                .author(AuthorResponse.builder()
+                        .id(1L)
+                        .fullName("Test Author")
+                        .build())
                 .build();
         
         Page<BookResponse> page = new PageImpl<>(
@@ -105,6 +124,10 @@ class BookControllerTest {
                 .id(1L)
                 .title("Test Book")
                 .description("Test Description")
+                .author(AuthorResponse.builder()
+                        .id(1L)
+                        .fullName("Test Author")
+                        .build())
                 .build();
         
         when(bookService.getBookById(1L)).thenReturn(bookResponse);
@@ -125,12 +148,16 @@ class BookControllerTest {
                 .id(1L)
                 .title("Test Book")
                 .description("Test Description")
+                .author(AuthorResponse.builder()
+                        .id(1L)
+                        .fullName("Test Author")
+                        .build())
                 .build();
         
         when(bookService.getBookById(1L)).thenReturn(bookResponse);
         
         // When
-        ResponseEntity<BookResponse> result = bookController.getBookById(1L);
+        ResponseEntity<BookResponse> result = bookController.getBookById(1L, null);
         
         // Then
         assertNotNull(result);
@@ -140,9 +167,18 @@ class BookControllerTest {
     }
     
     @Test
-    void testGetBookImage_UnitTest_ShouldCallService() {
+    void testGetBookImage_UnitTest_ShouldCallService() throws Exception {
         // Given
-        Resource mockResource = new ByteArrayResource("test".getBytes());
+        Resource mockResource = new ByteArrayResource("test".getBytes()) {
+            @Override
+            public URI getURI() {
+                try {
+                    return new URI("file:///test/image.png");
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        };
         
         when(bookImageService.getBookImage(1L)).thenReturn(mockResource);
         
@@ -152,6 +188,7 @@ class BookControllerTest {
         // Then
         assertNotNull(result);
         assertNotNull(result.getBody());
+        assertNotNull(result.getHeaders().getContentType());
     }
 
     @Test

@@ -3,6 +3,7 @@ package online.ityura.springdigitallibrary.unit.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import online.ityura.springdigitallibrary.dto.response.ErrorResponse;
 import online.ityura.springdigitallibrary.exception.GlobalExceptionHandler;
+import online.ityura.springdigitallibrary.metrics.MetricsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,12 +29,17 @@ class GlobalExceptionHandlerTest {
     @Mock
     private HttpServletRequest request;
     
+    @Mock
+    private MetricsService metricsService;
+    
     @InjectMocks
     private GlobalExceptionHandler globalExceptionHandler;
     
     @BeforeEach
     void setUp() {
         when(request.getRequestURI()).thenReturn("/api/v1/test");
+        when(request.getMethod()).thenReturn("GET");
+        doNothing().when(metricsService).incrementErrorCounter(anyInt(), anyString(), anyString(), anyString());
     }
     
     @Test

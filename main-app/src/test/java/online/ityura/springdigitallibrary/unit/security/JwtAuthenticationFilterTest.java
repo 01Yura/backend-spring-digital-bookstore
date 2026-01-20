@@ -4,6 +4,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import online.ityura.springdigitallibrary.model.Role;
+import online.ityura.springdigitallibrary.model.User;
+import online.ityura.springdigitallibrary.repository.UserRepository;
 import online.ityura.springdigitallibrary.security.JwtAuthenticationFilter;
 import online.ityura.springdigitallibrary.security.JwtTokenProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,7 +16,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -32,6 +34,9 @@ class JwtAuthenticationFilterTest {
     
     @Mock
     private UserDetailsService userDetailsService;
+    
+    @Mock
+    private UserRepository userRepository;
     
     @Mock
     private HttpServletRequest request;
@@ -96,12 +101,21 @@ class JwtAuthenticationFilterTest {
         String username = "test@example.com";
         String role = "USER";
         
+        User testUser = User.builder()
+                .id(1L)
+                .email(username)
+                .nickname("testuser")
+                .passwordHash("password")
+                .role(Role.USER)
+                .isVerified(true)
+                .build();
+        
         when(request.getRequestURI()).thenReturn("/api/v1/books/1/download");
         when(request.getMethod()).thenReturn("GET");
         when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
         when(jwtTokenProvider.extractUsername(token)).thenReturn(username);
         
-        UserDetails userDetails = User.builder()
+        UserDetails userDetails = org.springframework.security.core.userdetails.User.builder()
                 .username(username)
                 .password("password")
                 .authorities("ROLE_" + role)
@@ -110,6 +124,7 @@ class JwtAuthenticationFilterTest {
         when(userDetailsService.loadUserByUsername(username)).thenReturn(userDetails);
         when(jwtTokenProvider.validateToken(token, userDetails)).thenReturn(true);
         when(jwtTokenProvider.getRoleFromToken(token)).thenReturn(role);
+        when(userRepository.findByEmail(username)).thenReturn(java.util.Optional.of(testUser));
         
         // When - используем ReflectionTestUtils для вызова protected метода
         ReflectionTestUtils.invokeMethod(jwtAuthenticationFilter, "doFilterInternal", request, response, filterChain);

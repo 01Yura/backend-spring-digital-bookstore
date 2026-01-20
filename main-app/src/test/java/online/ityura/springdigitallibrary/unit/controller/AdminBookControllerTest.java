@@ -4,6 +4,7 @@ import online.ityura.springdigitallibrary.controller.AdminBookController;
 import online.ityura.springdigitallibrary.dto.request.CreateBookRequest;
 import online.ityura.springdigitallibrary.dto.request.PutBookRequest;
 import online.ityura.springdigitallibrary.dto.request.UpdateBookRequest;
+import online.ityura.springdigitallibrary.dto.response.AuthorResponse;
 import online.ityura.springdigitallibrary.dto.response.BookResponse;
 import online.ityura.springdigitallibrary.dto.response.MessageResponse;
 import online.ityura.springdigitallibrary.service.AdminBookService;
@@ -59,6 +60,10 @@ class AdminBookControllerTest {
                 .id(1L)
                 .title("Test Book")
                 .description("Test Description")
+                .author(AuthorResponse.builder()
+                        .id(1L)
+                        .fullName("Test Author")
+                        .build())
                 .build();
     }
     
@@ -85,6 +90,10 @@ class AdminBookControllerTest {
                 .id(1L)
                 .title("Updated Book")
                 .description("Updated Description")
+                .author(AuthorResponse.builder()
+                        .id(1L)
+                        .fullName("Updated Author")
+                        .build())
                 .build();
         
         when(adminBookService.updateBook(anyLong(), any(PutBookRequest.class))).thenReturn(updatedResponse);
@@ -105,6 +114,10 @@ class AdminBookControllerTest {
         BookResponse patchedResponse = BookResponse.builder()
                 .id(1L)
                 .title("Patched Book")
+                .author(AuthorResponse.builder()
+                        .id(1L)
+                        .fullName("Test Author")
+                        .build())
                 .build();
         
         when(adminBookService.patchBook(anyLong(), any(UpdateBookRequest.class), isNull(), isNull()))

@@ -1,10 +1,13 @@
 package online.ityura.springdigitallibrary.unit.controller;
 
 import online.ityura.springdigitallibrary.controller.BookFileController;
+import online.ityura.springdigitallibrary.dto.response.AuthorResponse;
+import online.ityura.springdigitallibrary.dto.response.BookResponse;
 import online.ityura.springdigitallibrary.model.Role;
 import online.ityura.springdigitallibrary.model.User;
 import online.ityura.springdigitallibrary.repository.UserRepository;
 import online.ityura.springdigitallibrary.service.BookFileService;
+import online.ityura.springdigitallibrary.service.BookService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +38,9 @@ class BookFileControllerTest {
     private UserRepository userRepository;
     
     @Mock
+    private BookService bookService;
+    
+    @Mock
     private Authentication authentication;
     
     @Mock
@@ -63,9 +69,20 @@ class BookFileControllerTest {
         Resource mockResource = new ByteArrayResource("test pdf content".getBytes());
         String filename = "test-book.pdf";
         
+        BookResponse bookResponse = BookResponse.builder()
+                .id(1L)
+                .title("Test Book")
+                .author(AuthorResponse.builder()
+                        .id(1L)
+                        .fullName("Test Author")
+                        .build())
+                .price(java.math.BigDecimal.ZERO)
+                .build();
+        
         when(authentication.getPrincipal()).thenReturn(userDetails);
         when(userDetails.getUsername()).thenReturn("test@example.com");
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(bookService.getBookById(1L)).thenReturn(bookResponse);
         when(bookFileService.downloadBookFile(1L, 1L)).thenReturn(mockResource);
         when(bookFileService.getOriginalFilename(1L)).thenReturn(filename);
         

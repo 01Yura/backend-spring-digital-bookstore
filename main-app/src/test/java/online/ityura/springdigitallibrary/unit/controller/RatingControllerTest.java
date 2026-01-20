@@ -4,8 +4,10 @@ import online.ityura.springdigitallibrary.controller.RatingController;
 import online.ityura.springdigitallibrary.dto.request.CreateRatingRequest;
 import online.ityura.springdigitallibrary.dto.request.UpdateRatingRequest;
 import online.ityura.springdigitallibrary.dto.response.RatingResponse;
+import online.ityura.springdigitallibrary.model.Rating;
 import online.ityura.springdigitallibrary.model.Role;
 import online.ityura.springdigitallibrary.model.User;
+import online.ityura.springdigitallibrary.repository.RatingRepository;
 import online.ityura.springdigitallibrary.repository.UserRepository;
 import online.ityura.springdigitallibrary.service.RatingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +26,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +37,9 @@ class RatingControllerTest {
     
     @Mock
     private UserRepository userRepository;
+    
+    @Mock
+    private RatingRepository ratingRepository;
     
     @Mock
     private Authentication authentication;
@@ -97,6 +103,11 @@ class RatingControllerTest {
     @Test
     void testUpdateMyRating_Success_ShouldReturn200() {
         // Given
+        Rating oldRating = Rating.builder()
+                .id(1L)
+                .value((short) 5)
+                .build();
+        
         RatingResponse updatedResponse = RatingResponse.builder()
                 .id(1L)
                 .bookId(1L)
@@ -104,6 +115,7 @@ class RatingControllerTest {
                 .value((short) 4)
                 .build();
         
+        when(ratingRepository.findByBookIdAndUserId(1L, 1L)).thenReturn(Optional.of(oldRating));
         when(ratingService.updateRating(anyLong(), anyLong(), any(UpdateRatingRequest.class)))
                 .thenReturn(updatedResponse);
         
@@ -115,6 +127,9 @@ class RatingControllerTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
         assertEquals((short) 4, response.getBody().getValue());
+        
+        verify(ratingRepository).findByBookIdAndUserId(1L, 1L);
+        verify(ratingService).updateRating(anyLong(), anyLong(), any(UpdateRatingRequest.class));
     }
 }
 

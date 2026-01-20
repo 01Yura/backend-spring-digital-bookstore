@@ -4,6 +4,8 @@ import online.ityura.springdigitallibrary.controller.AdminUserController;
 import online.ityura.springdigitallibrary.dto.response.AdminUserResponse;
 import online.ityura.springdigitallibrary.model.Role;
 import online.ityura.springdigitallibrary.model.User;
+import online.ityura.springdigitallibrary.repository.EmailVerificationTokenRepository;
+import online.ityura.springdigitallibrary.repository.PasswordResetTokenRepository;
 import online.ityura.springdigitallibrary.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,12 @@ class AdminUserControllerTest {
     
     @Mock
     private UserRepository userRepository;
+    
+    @Mock
+    private EmailVerificationTokenRepository emailVerificationTokenRepository;
+    
+    @Mock
+    private PasswordResetTokenRepository passwordResetTokenRepository;
     
     @InjectMocks
     private AdminUserController adminUserController;
@@ -132,6 +140,8 @@ class AdminUserControllerTest {
         // Given
         Long userId = 1L;
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        doNothing().when(emailVerificationTokenRepository).deleteByUser(any(User.class));
+        doNothing().when(passwordResetTokenRepository).deleteByUser(any(User.class));
         doNothing().when(userRepository).delete(testUser);
         
         // When & Then
@@ -139,6 +149,8 @@ class AdminUserControllerTest {
                 .andExpect(status().isNoContent());
         
         verify(userRepository).findById(userId);
+        verify(emailVerificationTokenRepository).deleteByUser(testUser);
+        verify(passwordResetTokenRepository).deleteByUser(testUser);
         verify(userRepository).delete(testUser);
     }
     
@@ -147,6 +159,8 @@ class AdminUserControllerTest {
         // Given
         Long userId = 1L;
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        doNothing().when(emailVerificationTokenRepository).deleteByUser(any(User.class));
+        doNothing().when(passwordResetTokenRepository).deleteByUser(any(User.class));
         doNothing().when(userRepository).delete(testUser);
         
         // When
@@ -158,6 +172,8 @@ class AdminUserControllerTest {
         assertNull(result.getBody());
         
         verify(userRepository).findById(userId);
+        verify(emailVerificationTokenRepository).deleteByUser(testUser);
+        verify(passwordResetTokenRepository).deleteByUser(testUser);
         verify(userRepository).delete(testUser);
     }
     
@@ -228,6 +244,8 @@ class AdminUserControllerTest {
         // Given
         Long userId = 1L;
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        doNothing().when(emailVerificationTokenRepository).deleteByUser(any(User.class));
+        doNothing().when(passwordResetTokenRepository).deleteByUser(any(User.class));
         doNothing().when(userRepository).delete(testUser);
         
         // When
@@ -239,6 +257,8 @@ class AdminUserControllerTest {
         assertNull(result.getBody());
         
         verify(userRepository).findById(userId);
+        verify(emailVerificationTokenRepository).deleteByUser(testUser);
+        verify(passwordResetTokenRepository).deleteByUser(testUser);
         verify(userRepository).delete(testUser);
     }
     
@@ -247,6 +267,8 @@ class AdminUserControllerTest {
         // Given
         Long userId = 1L;
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        doNothing().when(emailVerificationTokenRepository).deleteByUser(any(User.class));
+        doNothing().when(passwordResetTokenRepository).deleteByUser(any(User.class));
         doNothing().when(userRepository).delete(testUser);
         
         // When & Then
@@ -254,6 +276,8 @@ class AdminUserControllerTest {
                 .andExpect(status().isNoContent());
         
         verify(userRepository).findById(userId);
+        verify(emailVerificationTokenRepository).deleteByUser(testUser);
+        verify(passwordResetTokenRepository).deleteByUser(testUser);
         verify(userRepository).delete(testUser);
     }
     

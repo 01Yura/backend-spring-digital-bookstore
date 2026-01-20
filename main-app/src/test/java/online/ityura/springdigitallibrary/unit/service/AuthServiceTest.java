@@ -10,6 +10,8 @@ import online.ityura.springdigitallibrary.model.User;
 import online.ityura.springdigitallibrary.repository.UserRepository;
 import online.ityura.springdigitallibrary.security.JwtTokenProvider;
 import online.ityura.springdigitallibrary.service.AuthService;
+import online.ityura.springdigitallibrary.service.EmailService;
+import online.ityura.springdigitallibrary.service.EmailVerificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +47,12 @@ class AuthServiceTest {
     @Mock
     private AuthenticationManager authenticationManager;
     
+    @Mock
+    private EmailVerificationService emailVerificationService;
+    
+    @Mock
+    private EmailService emailService;
+    
     @InjectMocks
     private AuthService authService;
     
@@ -60,6 +68,7 @@ class AuthServiceTest {
                 .email("test@example.com")
                 .passwordHash("encodedPassword")
                 .role(Role.USER)
+                .isVerified(true)
                 .build();
         
         registerRequest = new RegisterRequest();
@@ -78,6 +87,8 @@ class AuthServiceTest {
         when(userRepository.existsByEmail(registerRequest.getEmail())).thenReturn(false);
         when(passwordEncoder.encode(registerRequest.getPassword())).thenReturn("encodedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
+        when(emailVerificationService.generateVerificationToken(any(User.class))).thenReturn("verificationToken");
+        doNothing().when(emailService).sendVerificationEmail(anyString(), anyString());
         
         // When
         RegisterResponse response = authService.register(registerRequest);
