@@ -45,6 +45,7 @@
 | email        | String        | Email пользователя       | NOT NULL, UNIQUE, валидный email                                           |
 | passwordHash | String        | Хеш пароля               | NOT NULL, BCrypt                                                           |
 | role         | Role (enum)   | Роль пользователя        | NOT NULL, USER или ADMIN                                                   |
+| isVerified   | Boolean       | Статус верификации email  | NOT NULL, default: false                                                   |
 | createdAt    | LocalDateTime | Дата создания            | NOT NULL, автоматически устанавливается                                    |
 
 **Enum Role:**
@@ -186,7 +187,7 @@
 
 #### POST /api/v1/auth/register
 
-**Описание:** Регистрация нового пользователя  
+**Описание:** Регистрация нового пользователя. После регистрации на указанный email будет отправлено письмо с ссылкой для подтверждения. Пользователь должен подтвердить email перед входом в систему. JWT токены НЕ выдаются при регистрации.  
 **Авторизация:** Не требуется  
 **Content-Type:** `application/json`
 
@@ -212,7 +213,8 @@
 {
   "userId": 1,
   "email": "john@example.com",
-  "role": "USER"
+  "role": "USER",
+  "message": "Registration successful! Please check your email and click the verification link to activate your account."
 }
 ```
 
@@ -220,6 +222,12 @@
 
 - `400` - Валидация не прошла (fieldErrors содержит детали)
 - `409` - Email уже существует (`EMAIL_ALREADY_EXISTS`)
+
+**Примечания:**
+
+- После регистрации пользователь получает `isVerified = false`
+- На email отправляется письмо с токеном верификации
+- Токен верификации действителен 24 часа (настраивается через `app.email.verification.token-expiration-hours`)
 
 ---
 
@@ -281,6 +289,175 @@
 
 - `400` - Валидация не прошла
 - `401` - Refresh токен недействителен или истек (`UNAUTHORIZED`)
+
+---
+
+#### GET /api/v1/auth/verify-email
+
+**Описание:** Верификация email пользователя по токену, полученному в письме  
+**Авторизация:** Не требуется
+
+**Query Parameters:**
+
+| Параметр | Тип    | Обязательный | Описание                    |
+| -------- | ------ | ------------ | --------------------------- |
+| token    | string | Да           | UUID токен из письма         |
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Email successfully verified"
+}
+```
+
+**Ошибки:**
+
+- `404` - Токен не найден (`NOT_FOUND`)
+- `410` - Токен истек или уже использован (`GONE`)
+
+**Примечания:**
+
+- Токен верификации действителен 24 часа (настраивается через `app.email.verification.token-expiration-hours`)
+- После успешной верификации пользователь может войти в систему
+- Токен можно использовать только один раз
+
+---
+
+#### POST /api/v1/auth/resend-verification
+
+**Описание:** Повторная отправка письма с токеном верификации на указанный email. Доступно только для неверифицированных пользователей.  
+**Авторизация:** Не требуется  
+**Content-Type:** `application/json`
+
+**Request Body:**
+
+```json
+{
+  "email": "john@example.com"
+}
+```
+
+**Валидация:**
+
+- `email`: валидный email, обязательное поле
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Verification email sent successfully"
+}
+```
+
+**Ошибки:**
+
+- `400` - Валидация не прошла или email уже верифицирован (`VALIDATION_ERROR`, `BAD_REQUEST`)
+- `404` - Пользователь не найден (`NOT_FOUND`)
+
+---
+
+#### POST /api/v1/auth/forgot-password
+
+**Описание:** Запрос на восстановление пароля. Отправляет письмо с ссылкой для восстановления пароля на указанный email. Всегда возвращает 200 OK, даже если email не найден (security best practice).  
+**Авторизация:** Не требуется  
+**Content-Type:** `application/json`
+
+**Request Body:**
+
+```json
+{
+  "email": "john@example.com"
+}
+```
+
+**Валидация:**
+
+- `email`: валидный email, обязательное поле
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "If the email exists, a password reset link has been sent"
+}
+```
+
+**Ошибки:**
+
+- `400` - Валидация не прошла (`VALIDATION_ERROR`)
+
+**Примечания:**
+
+- Токен восстановления пароля действителен 1 час (настраивается через `app.password.reset.token-expiration-hours`)
+- Для безопасности система не раскрывает информацию о существовании email
+
+---
+
+#### GET /api/v1/auth/reset-password
+
+**Описание:** Проверка валидности токена восстановления пароля. Используется при переходе по ссылке из письма. Не сбрасывает пароль, только проверяет токен.  
+**Авторизация:** Не требуется
+
+**Query Parameters:**
+
+| Параметр | Тип    | Обязательный | Описание                    |
+| -------- | ------ | ------------ | --------------------------- |
+| token    | string | Да           | UUID токен из письма         |
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Token is valid"
+}
+```
+
+**Ошибки:**
+
+- `404` - Токен не найден (`NOT_FOUND`)
+- `410` - Токен истек или уже использован (`GONE`)
+
+---
+
+#### POST /api/v1/auth/reset-password
+
+**Описание:** Сброс пароля пользователя по токену восстановления, полученному в письме.  
+**Авторизация:** Не требуется  
+**Content-Type:** `application/json`
+
+**Request Body:**
+
+```json
+{
+  "token": "550e8400-e29b-41d4-a716-446655440000",
+  "newPassword": "NewPassword123!"
+}
+```
+
+**Валидация:**
+
+- `token`: обязательное поле
+- `newPassword`: минимум 8 символов, должна содержать: цифру, строчную букву, заглавную букву, спецсимвол, без пробелов
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Password has been reset successfully"
+}
+```
+
+**Ошибки:**
+
+- `400` - Валидация не прошла (`VALIDATION_ERROR`)
+- `404` - Токен не найден (`NOT_FOUND`)
+- `410` - Токен истек или уже использован (`GONE`)
+
+**Примечания:**
+
+- После успешного сброса пароля токен помечается как использованный
+- Пользователь может сразу войти в систему с новым паролем
 
 ---
 
@@ -1180,6 +1357,211 @@ app.frontend-url=http://localhost:3000
 
 ---
 
+### Аналитика (требуется роль ADMIN)
+
+#### GET /api/v1/admin/analytics/books/{bookId}
+
+**Описание:** Получить статистику по конкретной книге  
+**Авторизация:** Требуется (Bearer Token, роль ADMIN)
+
+**Path Parameters:**
+
+- `bookId` (Long, required) - ID книги
+
+**Response (200 OK):**
+
+```json
+{
+  "bookId": 1,
+  "bookTitle": "Spring Boot Guide",
+  "bookGenre": "TECHNOLOGY",
+  "viewCount": 150,
+  "downloadCount": 45,
+  "purchaseCount": 30,
+  "reviewCount": 12,
+  "ratingCount": 25,
+  "averageRating": 8.5,
+  "totalRevenue": 299.70,
+  "uniqueViewers": 120,
+  "uniqueDownloaders": 40,
+  "uniquePurchasers": 28,
+  "aggregatedAt": "2025-12-17T13:20:00",
+  "createdAt": "2025-12-17T13:20:00"
+}
+```
+
+**Ошибки:**
+
+- `403` - Недостаточно прав (`ACCESS_DENIED`)
+- `404` - Аналитика для книги не найдена (`NOT_FOUND`)
+
+---
+
+#### GET /api/v1/admin/analytics/books/{bookId}/history
+
+**Описание:** Получить историю статистики по книге за указанный период  
+**Авторизация:** Требуется (Bearer Token, роль ADMIN)
+
+**Path Parameters:**
+
+- `bookId` (Long, required) - ID книги
+
+**Query Parameters:**
+
+| Параметр  | Тип           | Обязательный | По умолчанию                    | Описание                    |
+| --------- | -------------- | ------------ | ------------------------------- | --------------------------- |
+| startDate | LocalDateTime  | Нет          | 7 дней назад от текущей даты    | Начало периода (ISO 8601)   |
+| endDate   | LocalDateTime  | Нет          | Текущая дата                    | Конец периода (ISO 8601)    |
+
+**Пример запроса:**
+
+```
+GET /api/v1/admin/analytics/books/1/history?startDate=2025-12-10T00:00:00&endDate=2025-12-17T23:59:59
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "bookId": 1,
+  "bookTitle": "Spring Boot Guide",
+  "history": [
+    {
+      "bookId": 1,
+      "bookTitle": "Spring Boot Guide",
+      "bookGenre": "TECHNOLOGY",
+      "viewCount": 150,
+      "downloadCount": 45,
+      "purchaseCount": 30,
+      "reviewCount": 12,
+      "ratingCount": 25,
+      "averageRating": 8.5,
+      "totalRevenue": 299.70,
+      "uniqueViewers": 120,
+      "uniqueDownloaders": 40,
+      "uniquePurchasers": 28,
+      "aggregatedAt": "2025-12-17T13:20:00",
+      "createdAt": "2025-12-17T13:20:00"
+    }
+  ]
+}
+```
+
+**Ошибки:**
+
+- `403` - Недостаточно прав (`ACCESS_DENIED`)
+- `404` - История аналитики для книги не найдена (`NOT_FOUND`)
+
+---
+
+#### GET /api/v1/admin/analytics/overview
+
+**Описание:** Получить общую статистику системы  
+**Авторизация:** Требуется (Bearer Token, роль ADMIN)
+
+**Response (200 OK):**
+
+```json
+{
+  "totalBooks": 150,
+  "totalUsers": 500,
+  "totalPurchases": 1200,
+  "totalRevenue": 15000.00,
+  "totalReviews": 450,
+  "totalRatings": 800,
+  "averageBookRating": 7.8,
+  "aggregatedAt": "2025-12-17T13:20:00",
+  "createdAt": "2025-12-17T13:20:00"
+}
+```
+
+**Ошибки:**
+
+- `403` - Недостаточно прав (`ACCESS_DENIED`)
+- `404` - Аналитика системы не найдена (`NOT_FOUND`)
+
+---
+
+#### GET /api/v1/admin/analytics/popular
+
+**Описание:** Получить список популярных книг  
+**Авторизация:** Требуется (Bearer Token, роль ADMIN)
+
+**Query Parameters:**
+
+| Параметр | Тип    | Обязательный | По умолчанию | Описание                                                                    |
+| -------- | ------ | ------------ | ------------ | --------------------------------------------------------------------------- |
+| limit    | int    | Нет          | 10           | Количество книг для возврата                                                |
+| sortBy   | string | Нет          | "views"      | Поле для сортировки: `views`, `downloads`, `purchases`, `revenue`           |
+
+**Примеры запросов:**
+
+- `GET /api/v1/admin/analytics/popular?limit=20&sortBy=downloads`
+- `GET /api/v1/admin/analytics/popular?sortBy=revenue`
+
+**Response (200 OK):**
+
+```json
+{
+  "sortBy": "views",
+  "books": [
+    {
+      "bookId": 1,
+      "bookTitle": "Spring Boot Guide",
+      "bookGenre": "TECHNOLOGY",
+      "viewCount": 150,
+      "downloadCount": 45,
+      "purchaseCount": 30,
+      "totalRevenue": 299.70
+    }
+  ]
+}
+```
+
+**Ошибки:**
+
+- `403` - Недостаточно прав (`ACCESS_DENIED`)
+
+---
+
+#### GET /api/v1/admin/analytics/overview/history
+
+**Описание:** Получить историю общей статистики системы за указанный период  
+**Авторизация:** Требуется (Bearer Token, роль ADMIN)
+
+**Query Parameters:**
+
+| Параметр  | Тип           | Обязательный | По умолчанию                 | Описание                    |
+| --------- | -------------- | ------------ | ---------------------------- | --------------------------- |
+| startDate | LocalDateTime  | Нет          | 7 дней назад от текущей даты | Начало периода (ISO 8601)   |
+| endDate   | LocalDateTime  | Нет          | Текущая дата                 | Конец периода (ISO 8601)    |
+
+**Response (200 OK):**
+
+```json
+{
+  "history": [
+    {
+      "totalBooks": 150,
+      "totalUsers": 500,
+      "totalPurchases": 1200,
+      "totalRevenue": 15000.00,
+      "totalReviews": 450,
+      "totalRatings": 800,
+      "averageBookRating": 7.8,
+      "aggregatedAt": "2025-12-17T13:20:00",
+      "createdAt": "2025-12-17T13:20:00"
+    }
+  ]
+}
+```
+
+**Ошибки:**
+
+- `403` - Недостаточно прав (`ACCESS_DENIED`)
+
+---
+
 ### Служба поддержки
 
 #### POST /api/v1/support
@@ -1447,12 +1829,62 @@ app.frontend-url=http://localhost:3000
 }
 ```
 
+#### ForgotPasswordRequest
+
+```json
+{
+  "email": "string" // обязательное, валидный email
+}
+```
+
+#### ResetPasswordRequest
+
+```json
+{
+  "token": "string",        // обязательное, UUID токен из письма
+  "newPassword": "string"   // обязательное, минимум 8 символов, должна содержать: цифру, строчную, заглавную, спецсимвол, без пробелов
+}
+```
+
+#### ResendVerificationRequest
+
+```json
+{
+  "email": "string" // обязательное, валидный email
+}
+```
+
 #### SupportRequest
 
 ```json
 {
   "message": "string", // обязательное для /support (проверяется в контроллере), опциональное для /support/file, максимум 1000 символов
   "telegram": "string" // опциональное, максимум 100 символов
+}
+```
+
+#### ForgotPasswordRequest
+
+```json
+{
+  "email": "string" // обязательное, валидный email
+}
+```
+
+#### ResetPasswordRequest
+
+```json
+{
+  "token": "string",        // обязательное, UUID токен из письма
+  "newPassword": "string"   // обязательное, минимум 8 символов, должна содержать: цифру, строчную, заглавную, спецсимвол, без пробелов
+}
+```
+
+#### ResendVerificationRequest
+
+```json
+{
+  "email": "string" // обязательное, валидный email
 }
 ```
 
@@ -1477,7 +1909,8 @@ app.frontend-url=http://localhost:3000
 {
   "userId": 0,
   "email": "string",
-  "role": "USER" | "ADMIN"
+  "role": "USER" | "ADMIN",
+  "message": "string"  // Сообщение с инструкцией о необходимости подтвердить email
 }
 ```
 
@@ -1621,6 +2054,89 @@ app.frontend-url=http://localhost:3000
 }
 ```
 
+#### BookAnalyticsResponse
+
+```json
+{
+  "bookId": 0,
+  "bookTitle": "string",
+  "bookGenre": "string",
+  "viewCount": 0,
+  "downloadCount": 0,
+  "purchaseCount": 0,
+  "reviewCount": 0,
+  "ratingCount": 0,
+  "averageRating": 0.0,  // BigDecimal
+  "totalRevenue": 0.0,   // BigDecimal
+  "uniqueViewers": 0,
+  "uniqueDownloaders": 0,
+  "uniquePurchasers": 0,
+  "aggregatedAt": "2025-12-17T13:20:00",  // ISO 8601
+  "createdAt": "2025-12-17T13:20:00"      // ISO 8601
+}
+```
+
+#### BookAnalyticsHistoryResponse
+
+```json
+{
+  "bookId": 0,
+  "bookTitle": "string",
+  "history": [
+    {
+      // BookAnalyticsResponse объекты
+    }
+  ]
+}
+```
+
+#### SystemAnalyticsResponse
+
+```json
+{
+  "totalBooks": 0,
+  "totalUsers": 0,
+  "totalPurchases": 0,
+  "totalRevenue": 0.0,        // BigDecimal
+  "totalReviews": 0,
+  "totalRatings": 0,
+  "averageBookRating": 0.0,    // BigDecimal
+  "aggregatedAt": "2025-12-17T13:20:00",  // ISO 8601
+  "createdAt": "2025-12-17T13:20:00"      // ISO 8601
+}
+```
+
+#### SystemAnalyticsHistoryResponse
+
+```json
+{
+  "history": [
+    {
+      // SystemAnalyticsResponse объекты
+    }
+  ]
+}
+```
+
+#### PopularBooksResponse
+
+```json
+{
+  "sortBy": "string",  // "views", "downloads", "purchases", "revenue"
+  "books": [
+    {
+      "bookId": 0,
+      "bookTitle": "string",
+      "bookGenre": "string",
+      "viewCount": 0,
+      "downloadCount": 0,
+      "purchaseCount": 0,
+      "totalRevenue": 0.0  // BigDecimal
+    }
+  ]
+}
+```
+
 ---
 
 ## Обработка ошибок
@@ -1667,6 +2183,8 @@ app.frontend-url=http://localhost:3000
 | `PAYMENT_REQUIRED`          | 402         | Требуется оплата для скачивания        |
 | `BOOK_ALREADY_PURCHASED`    | 400         | Книга уже оплачена                     |
 | `INTERNAL_SERVER_ERROR`     | 500         | Внутренняя ошибка сервера              |
+| `GONE`                      | 410         | Токен истек или уже использован        |
+| `BAD_REQUEST`               | 400         | Неверный запрос (например, email уже верифицирован) |
 
 ### Обработка исключений
 
@@ -1897,6 +2415,19 @@ OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
 ```
 
+#### Email Verification
+
+```properties
+EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS=24
+EMAIL_VERIFICATION_BASE_URL=http://localhost:8080
+```
+
+#### Password Reset
+
+```properties
+PASSWORD_RESET_TOKEN_EXPIRATION_HOURS=1
+```
+
 #### Хранилище файлов
 
 ```properties
@@ -1958,6 +2489,13 @@ gemini.api.key=${GEMINI_API_KEY}
 
 # Frontend
 app.frontend-url=${FRONTEND_URL:http://localhost:3000}
+
+# Email Verification
+app.email.verification.token-expiration-hours=${EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS:24}
+app.email.verification.base-url=${EMAIL_VERIFICATION_BASE_URL:http://localhost:8080}
+
+# Password Reset
+app.password.reset.token-expiration-hours=${PASSWORD_RESET_TOKEN_EXPIRATION_HOURS:1}
 ```
 
 ---
@@ -2012,6 +2550,12 @@ app.frontend-url=${FRONTEND_URL:http://localhost:3000}
 **Административные эндпоинты:**
 
 - `/api/v1/admin/**` - все административные функции (требуется роль ADMIN)
+  - `/api/v1/admin/books/**` - управление книгами
+  - `/api/v1/admin/users/**` - управление пользователями
+  - `/api/v1/admin/analytics/**` - аналитика системы и книг
+  - `/api/v1/admin/books/**` - управление книгами
+  - `/api/v1/admin/users/**` - управление пользователями
+  - `/api/v1/admin/analytics/**` - аналитика системы и книг
 
 ---
 
