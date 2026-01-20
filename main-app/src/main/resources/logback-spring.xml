@@ -25,7 +25,7 @@
     <!-- Logstash TCP Appender - для отправки логов в Logstash -->
     <!-- Приложение не должно падать, если Logstash недоступен - используем AsyncAppender с neverBlock -->
     <!-- Активируется только если LOGSTASH_ENABLED=true -->
-    <if condition='isDefined("LOGSTASH_ENABLED") &amp;&amp; property("LOGSTASH_ENABLED").equals("true")'>
+    <if condition='property("LOGSTASH_ENABLED").equals("true")'>
         <then>
             <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
                 <destination>${LOGSTASH_HOST}:${LOGSTASH_PORT}</destination>
@@ -61,29 +61,39 @@
         </root>
     </springProfile>
     
-    <!-- Профиль для продакшена (prod) - логи в Logstash и консоль -->
+    <!-- Профиль для продакшена (prod) с Logstash -->
     <springProfile name="prod">
-        <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
-            <if condition='isDefined("LOGSTASH_ENABLED") &amp;&amp; property("LOGSTASH_ENABLED").equals("true")'>
-                <then>
+        <if condition='property("LOGSTASH_ENABLED").equals("true")'>
+            <then>
+                <root level="INFO">
+                    <appender-ref ref="CONSOLE"/>
                     <appender-ref ref="ASYNC_LOGSTASH"/>
-                </then>
-            </if>
-        </root>
+                </root>
+            </then>
+            <else>
+                <root level="INFO">
+                    <appender-ref ref="CONSOLE"/>
+                </root>
+            </else>
+        </if>
     </springProfile>
     
     <!-- Профиль по умолчанию (без указания профиля) - логи в консоль -->
     <!-- Logstash включается только если LOGSTASH_ENABLED=true -->
     <springProfile name="!dev,!prod">
-        <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
-            <if condition='isDefined("LOGSTASH_ENABLED") &amp;&amp; property("LOGSTASH_ENABLED").equals("true")'>
-                <then>
+        <if condition='property("LOGSTASH_ENABLED").equals("true")'>
+            <then>
+                <root level="INFO">
+                    <appender-ref ref="CONSOLE"/>
                     <appender-ref ref="ASYNC_LOGSTASH"/>
-                </then>
-            </if>
-        </root>
+                </root>
+            </then>
+            <else>
+                <root level="INFO">
+                    <appender-ref ref="CONSOLE"/>
+                </root>
+            </else>
+        </if>
     </springProfile>
     
     <!-- Уровни логирования для конкретных пакетов -->
