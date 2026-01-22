@@ -50,6 +50,22 @@ public class CrudRequester extends HttpClient implements CrudEndpointInterface {
                 .then()
                 .spec(responseSpecification);
     }
+    
+    /**
+     * POST запрос с path variables
+     * @param dto тело запроса
+     * @param pathVariables значения для замены в пути (например, bookId)
+     * @return ValidatableResponse
+     */
+    public ValidatableResponse post(BaseDto dto, Object... pathVariables) {
+        return given()
+                .spec(requestSpecification)
+                .body(dto)
+                .when()
+                .post(endpoint.getPath(pathVariables))
+                .then()
+                .spec(responseSpecification);
+    }
 
     @Override
     public ValidatableResponse delete(Long id) {
@@ -62,6 +78,20 @@ public class CrudRequester extends HttpClient implements CrudEndpointInterface {
                 .spec(requestSpecification)
                 .when()
                 .get(endpoint.getRelativePath())
+                .then()
+                .spec(responseSpecification);
+    }
+    
+    /**
+     * GET запрос с path variables
+     * @param pathVariables значения для замены в пути (например, bookId)
+     * @return ValidatableResponse
+     */
+    public ValidatableResponse get(Object... pathVariables) {
+        return given()
+                .spec(requestSpecification)
+                .when()
+                .get(endpoint.getPath(pathVariables))
                 .then()
                 .spec(responseSpecification);
     }

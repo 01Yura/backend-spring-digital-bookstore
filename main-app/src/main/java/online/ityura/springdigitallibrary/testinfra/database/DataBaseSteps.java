@@ -2,9 +2,15 @@ package online.ityura.springdigitallibrary.testinfra.database;
 
 import online.ityura.springdigitallibrary.model.Author;
 import online.ityura.springdigitallibrary.model.Book;
+import online.ityura.springdigitallibrary.model.BookAnalytics;
+import online.ityura.springdigitallibrary.model.EmailVerificationToken;
+import online.ityura.springdigitallibrary.model.PasswordResetToken;
+import online.ityura.springdigitallibrary.model.Purchase;
+import online.ityura.springdigitallibrary.model.PurchaseStatus;
 import online.ityura.springdigitallibrary.model.Rating;
 import online.ityura.springdigitallibrary.model.Review;
 import online.ityura.springdigitallibrary.model.Role;
+import online.ityura.springdigitallibrary.model.SystemAnalytics;
 import online.ityura.springdigitallibrary.model.User;
 import online.ityura.springdigitallibrary.testinfra.configs.Config;
 
@@ -36,7 +42,12 @@ public class DataBaseSteps {
         BOOKS("books"),
         AUTHORS("authors"),
         REVIEWS("reviews"),
-        RATINGS("ratings");
+        RATINGS("ratings"),
+        PURCHASES("purchases"),
+        EMAIL_VERIFICATION_TOKENS("email_verification_tokens"),
+        PASSWORD_RESET_TOKENS("password_reset_tokens"),
+        BOOK_ANALYTICS("book_analytics"),
+        SYSTEM_ANALYTICS("system_analytics");
 
         private final String table;
 
@@ -825,6 +836,29 @@ public class DataBaseSteps {
     }
 
     /**
+     * Устанавливает статус верификации email пользователя в базе данных
+     * @param userId ID пользователя
+     * @return количество обновлённых строк
+     */
+    public static int setUserVerified(Long userId) {
+        return StepLogger.log(
+            "Set user as verified in database for user ID: " + userId,
+            () -> {
+                String sql = "UPDATE " + Table.USERS.getTable() + " SET is_verified = true WHERE id = ?";
+
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+
+                    statement.setLong(1, userId);
+                    return statement.executeUpdate();
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to set user as verified for userId=" + userId, e);
+                }
+            }
+        );
+    }
+
+    /**
      * Обновляет средний рейтинг книги в базе данных
      * @param bookId ID книги
      * @param newRatingAvg новый средний рейтинг
@@ -919,6 +953,740 @@ public class DataBaseSteps {
                     return statement.executeUpdate();
                 } catch (SQLException e) {
                     throw new RuntimeException("Failed to update value for ratingId=" + ratingId, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Обновляет статус покупки в базе данных
+     * @param purchaseId ID покупки
+     * @param newStatus новый статус покупки
+     * @return количество обновлённых строк
+     */
+    public static int updatePurchaseStatus(Long purchaseId, PurchaseStatus newStatus) {
+        return StepLogger.log(
+            "Update purchase status in database for purchase ID: " + purchaseId + " to: " + newStatus,
+            () -> {
+                String sql = "UPDATE " + Table.PURCHASES.getTable() + " SET status = ? WHERE id = ?";
+
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+
+                    statement.setString(1, newStatus != null ? newStatus.name() : null);
+                    statement.setLong(2, purchaseId);
+                    return statement.executeUpdate();
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to update status for purchaseId=" + purchaseId, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Устанавливает токен верификации email как использованный в базе данных
+     * @param tokenId ID токена
+     * @return количество обновлённых строк
+     */
+    public static int setEmailVerificationTokenAsUsed(Long tokenId) {
+        return StepLogger.log(
+            "Set email verification token as used in database for token ID: " + tokenId,
+            () -> {
+                String sql = "UPDATE " + Table.EMAIL_VERIFICATION_TOKENS.getTable() + " SET used = true WHERE id = ?";
+
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+
+                    statement.setLong(1, tokenId);
+                    return statement.executeUpdate();
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to set email verification token as used for tokenId=" + tokenId, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Устанавливает токен сброса пароля как использованный в базе данных
+     * @param tokenId ID токена
+     * @return количество обновлённых строк
+     */
+    public static int setPasswordResetTokenAsUsed(Long tokenId) {
+        return StepLogger.log(
+            "Set password reset token as used in database for token ID: " + tokenId,
+            () -> {
+                String sql = "UPDATE " + Table.PASSWORD_RESET_TOKENS.getTable() + " SET used = true WHERE id = ?";
+
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+
+                    statement.setLong(1, tokenId);
+                    return statement.executeUpdate();
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to set password reset token as used for tokenId=" + tokenId, e);
+                }
+            }
+        );
+    }
+
+    /* =================== PURCHASES =================== */
+
+    /**
+     * Получает покупку из базы данных по ID
+     * @param id ID покупки
+     * @return объект Purchase или null, если не найдена
+     */
+    public static Purchase getPurchaseById(Long id) {
+        return StepLogger.log(
+            "Get purchase from database by ID: " + id,
+            () -> DBRequest.builder()
+                    .requestType(DBRequest.RequestType.SELECT)
+                    .table(Table.PURCHASES.getTable())
+                    .where(Condition.equalTo("id", id))
+                    .extractAs(Purchase.class)
+        );
+    }
+
+    /**
+     * Получает все покупки из базы данных
+     * @return список всех покупок
+     */
+    public static List<Purchase> getAllPurchases() {
+        return StepLogger.log(
+            "Get all purchases from database",
+            () -> {
+                String sql = "SELECT * FROM " + Table.PURCHASES.getTable();
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    
+                    List<Purchase> purchases = new ArrayList<>();
+                    while (resultSet.next()) {
+                        Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                        LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                        
+                        Timestamp updatedAtTimestamp = resultSet.getTimestamp("updated_at");
+                        LocalDateTime updatedAt = updatedAtTimestamp != null ? updatedAtTimestamp.toLocalDateTime() : null;
+                        
+                        Long bookId = resultSet.getLong("book_id");
+                        Book book = null;
+                        if (!resultSet.wasNull() && bookId != null) {
+                            book = Book.builder().id(bookId).build();
+                        }
+                        
+                        Long userId = resultSet.getLong("user_id");
+                        User user = null;
+                        if (!resultSet.wasNull() && userId != null) {
+                            user = User.builder().id(userId).build();
+                        }
+                        
+                        String statusStr = resultSet.getString("status");
+                        PurchaseStatus status = null;
+                        if (statusStr != null) {
+                            try {
+                                status = PurchaseStatus.valueOf(statusStr);
+                            } catch (IllegalArgumentException e) {
+                                // Если значение не найдено в enum, оставляем null
+                            }
+                        }
+                        
+                        purchases.add(Purchase.builder()
+                                .id(resultSet.getLong("id"))
+                                .user(user)
+                                .book(book)
+                                .stripePaymentIntentId(resultSet.getString("stripe_payment_intent_id"))
+                                .amountPaid(resultSet.getBigDecimal("amount_paid"))
+                                .status(status)
+                                .createdAt(createdAt)
+                                .updatedAt(updatedAt)
+                                .build());
+                    }
+                    return purchases;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get all purchases", e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Получает покупки по ID пользователя
+     * @param userId ID пользователя
+     * @return список покупок пользователя
+     */
+    public static List<Purchase> getPurchasesByUserId(Long userId) {
+        return StepLogger.log(
+            "Get purchases for user ID: " + userId,
+            () -> {
+                String sql = "SELECT * FROM " + Table.PURCHASES.getTable() + " WHERE user_id = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setLong(1, userId);
+                    List<Purchase> purchases = new ArrayList<>();
+                    
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        while (resultSet.next()) {
+                            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                            
+                            Timestamp updatedAtTimestamp = resultSet.getTimestamp("updated_at");
+                            LocalDateTime updatedAt = updatedAtTimestamp != null ? updatedAtTimestamp.toLocalDateTime() : null;
+                            
+                            Long bookId = resultSet.getLong("book_id");
+                            Book book = null;
+                            if (!resultSet.wasNull() && bookId != null) {
+                                book = Book.builder().id(bookId).build();
+                            }
+                            
+                            Long userIdFromDb = resultSet.getLong("user_id");
+                            User user = null;
+                            if (!resultSet.wasNull() && userIdFromDb != null) {
+                                user = User.builder().id(userIdFromDb).build();
+                            }
+                            
+                            String statusStr = resultSet.getString("status");
+                            PurchaseStatus status = null;
+                            if (statusStr != null) {
+                                try {
+                                    status = PurchaseStatus.valueOf(statusStr);
+                                } catch (IllegalArgumentException e) {
+                                    // Если значение не найдено в enum, оставляем null
+                                }
+                            }
+                            
+                            purchases.add(Purchase.builder()
+                                    .id(resultSet.getLong("id"))
+                                    .user(user)
+                                    .book(book)
+                                    .stripePaymentIntentId(resultSet.getString("stripe_payment_intent_id"))
+                                    .amountPaid(resultSet.getBigDecimal("amount_paid"))
+                                    .status(status)
+                                    .createdAt(createdAt)
+                                    .updatedAt(updatedAt)
+                                    .build());
+                        }
+                    }
+                    return purchases;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get purchases for user ID: " + userId, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Получает покупки по ID книги
+     * @param bookId ID книги
+     * @return список покупок книги
+     */
+    public static List<Purchase> getPurchasesByBookId(Long bookId) {
+        return StepLogger.log(
+            "Get purchases for book ID: " + bookId,
+            () -> {
+                String sql = "SELECT * FROM " + Table.PURCHASES.getTable() + " WHERE book_id = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setLong(1, bookId);
+                    List<Purchase> purchases = new ArrayList<>();
+                    
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        while (resultSet.next()) {
+                            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                            
+                            Timestamp updatedAtTimestamp = resultSet.getTimestamp("updated_at");
+                            LocalDateTime updatedAt = updatedAtTimestamp != null ? updatedAtTimestamp.toLocalDateTime() : null;
+                            
+                            Long bookIdFromDb = resultSet.getLong("book_id");
+                            Book book = null;
+                            if (!resultSet.wasNull() && bookIdFromDb != null) {
+                                book = Book.builder().id(bookIdFromDb).build();
+                            }
+                            
+                            Long userId = resultSet.getLong("user_id");
+                            User user = null;
+                            if (!resultSet.wasNull() && userId != null) {
+                                user = User.builder().id(userId).build();
+                            }
+                            
+                            String statusStr = resultSet.getString("status");
+                            PurchaseStatus status = null;
+                            if (statusStr != null) {
+                                try {
+                                    status = PurchaseStatus.valueOf(statusStr);
+                                } catch (IllegalArgumentException e) {
+                                    // Если значение не найдено в enum, оставляем null
+                                }
+                            }
+                            
+                            purchases.add(Purchase.builder()
+                                    .id(resultSet.getLong("id"))
+                                    .user(user)
+                                    .book(book)
+                                    .stripePaymentIntentId(resultSet.getString("stripe_payment_intent_id"))
+                                    .amountPaid(resultSet.getBigDecimal("amount_paid"))
+                                    .status(status)
+                                    .createdAt(createdAt)
+                                    .updatedAt(updatedAt)
+                                    .build());
+                        }
+                    }
+                    return purchases;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get purchases for book ID: " + bookId, e);
+                }
+            }
+        );
+    }
+
+    /* =================== EMAIL VERIFICATION TOKENS =================== */
+
+    /**
+     * Получает токен верификации email из базы данных по токену
+     * @param token токен верификации
+     * @return объект EmailVerificationToken или null, если не найден
+     */
+    public static EmailVerificationToken getEmailVerificationTokenByToken(String token) {
+        return StepLogger.log(
+            "Get email verification token from database by token: " + token,
+            () -> DBRequest.builder()
+                    .requestType(DBRequest.RequestType.SELECT)
+                    .table(Table.EMAIL_VERIFICATION_TOKENS.getTable())
+                    .where(Condition.equalTo("token", token))
+                    .extractAs(EmailVerificationToken.class)
+        );
+    }
+
+    /**
+     * Получает токен верификации email из базы данных по ID
+     * @param id ID токена
+     * @return объект EmailVerificationToken или null, если не найден
+     */
+    public static EmailVerificationToken getEmailVerificationTokenById(Long id) {
+        return StepLogger.log(
+            "Get email verification token from database by ID: " + id,
+            () -> DBRequest.builder()
+                    .requestType(DBRequest.RequestType.SELECT)
+                    .table(Table.EMAIL_VERIFICATION_TOKENS.getTable())
+                    .where(Condition.equalTo("id", id))
+                    .extractAs(EmailVerificationToken.class)
+        );
+    }
+
+    /**
+     * Получает все токены верификации email из базы данных
+     * @return список всех токенов
+     */
+    public static List<EmailVerificationToken> getAllEmailVerificationTokens() {
+        return StepLogger.log(
+            "Get all email verification tokens from database",
+            () -> {
+                String sql = "SELECT * FROM " + Table.EMAIL_VERIFICATION_TOKENS.getTable();
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    
+                    List<EmailVerificationToken> tokens = new ArrayList<>();
+                    while (resultSet.next()) {
+                        Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                        LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                        
+                        Timestamp expiresAtTimestamp = resultSet.getTimestamp("expires_at");
+                        LocalDateTime expiresAt = expiresAtTimestamp != null ? expiresAtTimestamp.toLocalDateTime() : null;
+                        
+                        Long userId = resultSet.getLong("user_id");
+                        User user = null;
+                        if (!resultSet.wasNull() && userId != null) {
+                            user = User.builder().id(userId).build();
+                        }
+                        
+                        tokens.add(EmailVerificationToken.builder()
+                                .id(resultSet.getLong("id"))
+                                .token(resultSet.getString("token"))
+                                .user(user)
+                                .expiresAt(expiresAt)
+                                .createdAt(createdAt)
+                                .used(resultSet.getBoolean("used"))
+                                .build());
+                    }
+                    return tokens;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get all email verification tokens", e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Получает токены верификации email по ID пользователя
+     * @param userId ID пользователя
+     * @return список токенов пользователя
+     */
+    public static List<EmailVerificationToken> getEmailVerificationTokensByUserId(Long userId) {
+        return StepLogger.log(
+            "Get email verification tokens for user ID: " + userId,
+            () -> {
+                String sql = "SELECT * FROM " + Table.EMAIL_VERIFICATION_TOKENS.getTable() + " WHERE user_id = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setLong(1, userId);
+                    List<EmailVerificationToken> tokens = new ArrayList<>();
+                    
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        while (resultSet.next()) {
+                            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                            
+                            Timestamp expiresAtTimestamp = resultSet.getTimestamp("expires_at");
+                            LocalDateTime expiresAt = expiresAtTimestamp != null ? expiresAtTimestamp.toLocalDateTime() : null;
+                            
+                            Long userIdFromDb = resultSet.getLong("user_id");
+                            User user = null;
+                            if (!resultSet.wasNull() && userIdFromDb != null) {
+                                user = User.builder().id(userIdFromDb).build();
+                            }
+                            
+                            tokens.add(EmailVerificationToken.builder()
+                                    .id(resultSet.getLong("id"))
+                                    .token(resultSet.getString("token"))
+                                    .user(user)
+                                    .expiresAt(expiresAt)
+                                    .createdAt(createdAt)
+                                    .used(resultSet.getBoolean("used"))
+                                    .build());
+                        }
+                    }
+                    return tokens;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get email verification tokens for user ID: " + userId, e);
+                }
+            }
+        );
+    }
+
+    /* =================== PASSWORD RESET TOKENS =================== */
+
+    /**
+     * Получает токен сброса пароля из базы данных по токену
+     * @param token токен сброса пароля
+     * @return объект PasswordResetToken или null, если не найден
+     */
+    public static PasswordResetToken getPasswordResetTokenByToken(String token) {
+        return StepLogger.log(
+            "Get password reset token from database by token: " + token,
+            () -> DBRequest.builder()
+                    .requestType(DBRequest.RequestType.SELECT)
+                    .table(Table.PASSWORD_RESET_TOKENS.getTable())
+                    .where(Condition.equalTo("token", token))
+                    .extractAs(PasswordResetToken.class)
+        );
+    }
+
+    /**
+     * Получает токен сброса пароля из базы данных по ID
+     * @param id ID токена
+     * @return объект PasswordResetToken или null, если не найден
+     */
+    public static PasswordResetToken getPasswordResetTokenById(Long id) {
+        return StepLogger.log(
+            "Get password reset token from database by ID: " + id,
+            () -> DBRequest.builder()
+                    .requestType(DBRequest.RequestType.SELECT)
+                    .table(Table.PASSWORD_RESET_TOKENS.getTable())
+                    .where(Condition.equalTo("id", id))
+                    .extractAs(PasswordResetToken.class)
+        );
+    }
+
+    /**
+     * Получает все токены сброса пароля из базы данных
+     * @return список всех токенов
+     */
+    public static List<PasswordResetToken> getAllPasswordResetTokens() {
+        return StepLogger.log(
+            "Get all password reset tokens from database",
+            () -> {
+                String sql = "SELECT * FROM " + Table.PASSWORD_RESET_TOKENS.getTable();
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    
+                    List<PasswordResetToken> tokens = new ArrayList<>();
+                    while (resultSet.next()) {
+                        Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                        LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                        
+                        Timestamp expiresAtTimestamp = resultSet.getTimestamp("expires_at");
+                        LocalDateTime expiresAt = expiresAtTimestamp != null ? expiresAtTimestamp.toLocalDateTime() : null;
+                        
+                        Long userId = resultSet.getLong("user_id");
+                        User user = null;
+                        if (!resultSet.wasNull() && userId != null) {
+                            user = User.builder().id(userId).build();
+                        }
+                        
+                        tokens.add(PasswordResetToken.builder()
+                                .id(resultSet.getLong("id"))
+                                .token(resultSet.getString("token"))
+                                .user(user)
+                                .expiresAt(expiresAt)
+                                .createdAt(createdAt)
+                                .used(resultSet.getBoolean("used"))
+                                .build());
+                    }
+                    return tokens;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get all password reset tokens", e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Получает токены сброса пароля по ID пользователя
+     * @param userId ID пользователя
+     * @return список токенов пользователя
+     */
+    public static List<PasswordResetToken> getPasswordResetTokensByUserId(Long userId) {
+        return StepLogger.log(
+            "Get password reset tokens for user ID: " + userId,
+            () -> {
+                String sql = "SELECT * FROM " + Table.PASSWORD_RESET_TOKENS.getTable() + " WHERE user_id = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setLong(1, userId);
+                    List<PasswordResetToken> tokens = new ArrayList<>();
+                    
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        while (resultSet.next()) {
+                            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                            
+                            Timestamp expiresAtTimestamp = resultSet.getTimestamp("expires_at");
+                            LocalDateTime expiresAt = expiresAtTimestamp != null ? expiresAtTimestamp.toLocalDateTime() : null;
+                            
+                            Long userIdFromDb = resultSet.getLong("user_id");
+                            User user = null;
+                            if (!resultSet.wasNull() && userIdFromDb != null) {
+                                user = User.builder().id(userIdFromDb).build();
+                            }
+                            
+                            tokens.add(PasswordResetToken.builder()
+                                    .id(resultSet.getLong("id"))
+                                    .token(resultSet.getString("token"))
+                                    .user(user)
+                                    .expiresAt(expiresAt)
+                                    .createdAt(createdAt)
+                                    .used(resultSet.getBoolean("used"))
+                                    .build());
+                        }
+                    }
+                    return tokens;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get password reset tokens for user ID: " + userId, e);
+                }
+            }
+        );
+    }
+
+    /* =================== BOOK ANALYTICS =================== */
+
+    /**
+     * Получает аналитику книги из базы данных по ID
+     * @param id ID аналитики
+     * @return объект BookAnalytics или null, если не найдена
+     */
+    public static BookAnalytics getBookAnalyticsById(Long id) {
+        return StepLogger.log(
+            "Get book analytics from database by ID: " + id,
+            () -> DBRequest.builder()
+                    .requestType(DBRequest.RequestType.SELECT)
+                    .table(Table.BOOK_ANALYTICS.getTable())
+                    .where(Condition.equalTo("id", id))
+                    .extractAs(BookAnalytics.class)
+        );
+    }
+
+    /**
+     * Получает аналитику книги из базы данных по ID книги
+     * @param bookId ID книги
+     * @return объект BookAnalytics или null, если не найдена
+     */
+    public static BookAnalytics getBookAnalyticsByBookId(Long bookId) {
+        return StepLogger.log(
+            "Get book analytics from database by book ID: " + bookId,
+            () -> DBRequest.builder()
+                    .requestType(DBRequest.RequestType.SELECT)
+                    .table(Table.BOOK_ANALYTICS.getTable())
+                    .where(Condition.equalTo("book_id", bookId))
+                    .extractAs(BookAnalytics.class)
+        );
+    }
+
+    /**
+     * Получает всю аналитику книг из базы данных
+     * @return список всей аналитики книг
+     */
+    public static List<BookAnalytics> getAllBookAnalytics() {
+        return StepLogger.log(
+            "Get all book analytics from database",
+            () -> {
+                String sql = "SELECT * FROM " + Table.BOOK_ANALYTICS.getTable();
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    
+                    List<BookAnalytics> analytics = new ArrayList<>();
+                    while (resultSet.next()) {
+                        Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                        LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                        
+                        Timestamp aggregatedAtTimestamp = resultSet.getTimestamp("aggregated_at");
+                        LocalDateTime aggregatedAt = aggregatedAtTimestamp != null ? aggregatedAtTimestamp.toLocalDateTime() : null;
+                        
+                        analytics.add(BookAnalytics.builder()
+                                .id(resultSet.getLong("id"))
+                                .bookId(resultSet.getLong("book_id"))
+                                .bookTitle(resultSet.getString("book_title"))
+                                .bookGenre(resultSet.getString("book_genre"))
+                                .viewCount(resultSet.getObject("view_count", Long.class))
+                                .downloadCount(resultSet.getObject("download_count", Long.class))
+                                .purchaseCount(resultSet.getObject("purchase_count", Long.class))
+                                .reviewCount(resultSet.getObject("review_count", Long.class))
+                                .ratingCount(resultSet.getObject("rating_count", Long.class))
+                                .averageRating(resultSet.getBigDecimal("average_rating"))
+                                .totalRevenue(resultSet.getBigDecimal("total_revenue"))
+                                .uniqueViewers(resultSet.getObject("unique_viewers", Integer.class))
+                                .uniqueDownloaders(resultSet.getObject("unique_downloaders", Integer.class))
+                                .uniquePurchasers(resultSet.getObject("unique_purchasers", Integer.class))
+                                .aggregatedAt(aggregatedAt)
+                                .createdAt(createdAt)
+                                .build());
+                    }
+                    return analytics;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get all book analytics", e);
+                }
+            }
+        );
+    }
+
+    /* =================== SYSTEM ANALYTICS =================== */
+
+    /**
+     * Получает системную аналитику из базы данных по ID
+     * @param id ID аналитики
+     * @return объект SystemAnalytics или null, если не найдена
+     */
+    public static SystemAnalytics getSystemAnalyticsById(Long id) {
+        return StepLogger.log(
+            "Get system analytics from database by ID: " + id,
+            () -> DBRequest.builder()
+                    .requestType(DBRequest.RequestType.SELECT)
+                    .table(Table.SYSTEM_ANALYTICS.getTable())
+                    .where(Condition.equalTo("id", id))
+                    .extractAs(SystemAnalytics.class)
+        );
+    }
+
+    /**
+     * Получает всю системную аналитику из базы данных
+     * @return список всей системной аналитики
+     */
+    public static List<SystemAnalytics> getAllSystemAnalytics() {
+        return StepLogger.log(
+            "Get all system analytics from database",
+            () -> {
+                String sql = "SELECT * FROM " + Table.SYSTEM_ANALYTICS.getTable() + " ORDER BY aggregated_at DESC";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    
+                    List<SystemAnalytics> analytics = new ArrayList<>();
+                    while (resultSet.next()) {
+                        Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                        LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                        
+                        Timestamp aggregatedAtTimestamp = resultSet.getTimestamp("aggregated_at");
+                        LocalDateTime aggregatedAt = aggregatedAtTimestamp != null ? aggregatedAtTimestamp.toLocalDateTime() : null;
+                        
+                        analytics.add(SystemAnalytics.builder()
+                                .id(resultSet.getLong("id"))
+                                .totalBooks(resultSet.getObject("total_books", Integer.class))
+                                .totalUsers(resultSet.getObject("total_users", Integer.class))
+                                .totalViews(resultSet.getObject("total_views", Long.class))
+                                .totalDownloads(resultSet.getObject("total_downloads", Long.class))
+                                .totalPurchases(resultSet.getObject("total_purchases", Long.class))
+                                .totalRevenue(resultSet.getBigDecimal("total_revenue"))
+                                .totalReviews(resultSet.getObject("total_reviews", Long.class))
+                                .totalRatings(resultSet.getObject("total_ratings", Long.class))
+                                .averageRating(resultSet.getBigDecimal("average_rating"))
+                                .averageReviewLength(resultSet.getBigDecimal("average_review_length"))
+                                .mostPopularBookId(resultSet.getObject("most_popular_book_id", Long.class))
+                                .mostPopularBookTitle(resultSet.getString("most_popular_book_title"))
+                                .topGenre(resultSet.getString("top_genre"))
+                                .topGenreBookCount(resultSet.getObject("top_genre_book_count", Integer.class))
+                                .topGenreTotalViews(resultSet.getObject("top_genre_total_views", Long.class))
+                                .aggregatedAt(aggregatedAt)
+                                .createdAt(createdAt)
+                                .build());
+                    }
+                    return analytics;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get all system analytics", e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Получает последнюю системную аналитику из базы данных
+     * @return объект SystemAnalytics или null, если не найдена
+     */
+    public static SystemAnalytics getLatestSystemAnalytics() {
+        return StepLogger.log(
+            "Get latest system analytics from database",
+            () -> {
+                String sql = "SELECT * FROM " + Table.SYSTEM_ANALYTICS.getTable() + " ORDER BY aggregated_at DESC LIMIT 1";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    
+                    if (resultSet.next()) {
+                        Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+                        LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+                        
+                        Timestamp aggregatedAtTimestamp = resultSet.getTimestamp("aggregated_at");
+                        LocalDateTime aggregatedAt = aggregatedAtTimestamp != null ? aggregatedAtTimestamp.toLocalDateTime() : null;
+                        
+                        return SystemAnalytics.builder()
+                                .id(resultSet.getLong("id"))
+                                .totalBooks(resultSet.getObject("total_books", Integer.class))
+                                .totalUsers(resultSet.getObject("total_users", Integer.class))
+                                .totalViews(resultSet.getObject("total_views", Long.class))
+                                .totalDownloads(resultSet.getObject("total_downloads", Long.class))
+                                .totalPurchases(resultSet.getObject("total_purchases", Long.class))
+                                .totalRevenue(resultSet.getBigDecimal("total_revenue"))
+                                .totalReviews(resultSet.getObject("total_reviews", Long.class))
+                                .totalRatings(resultSet.getObject("total_ratings", Long.class))
+                                .averageRating(resultSet.getBigDecimal("average_rating"))
+                                .averageReviewLength(resultSet.getBigDecimal("average_review_length"))
+                                .mostPopularBookId(resultSet.getObject("most_popular_book_id", Long.class))
+                                .mostPopularBookTitle(resultSet.getString("most_popular_book_title"))
+                                .topGenre(resultSet.getString("top_genre"))
+                                .topGenreBookCount(resultSet.getObject("top_genre_book_count", Integer.class))
+                                .topGenreTotalViews(resultSet.getObject("top_genre_total_views", Long.class))
+                                .aggregatedAt(aggregatedAt)
+                                .createdAt(createdAt)
+                                .build();
+                    }
+                    return null;
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to get latest system analytics", e);
                 }
             }
         );
@@ -1110,6 +1878,141 @@ public class DataBaseSteps {
                     }
                 } catch (SQLException e) {
                     throw new RuntimeException("Failed to check if rating exists: " + ratingId, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Проверяет существование покупки в базе данных
+     * @param purchaseId ID покупки
+     * @return true если покупка существует, false в противном случае
+     */
+    public static boolean purchaseExists(Long purchaseId) {
+        return StepLogger.log(
+            "Check if purchase exists: " + purchaseId,
+            () -> {
+                String sql = "SELECT COUNT(*) FROM " + Table.PURCHASES.getTable() + " WHERE id = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setLong(1, purchaseId);
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        if (resultSet.next()) {
+                            return resultSet.getInt(1) > 0;
+                        }
+                        return false;
+                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to check if purchase exists: " + purchaseId, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Проверяет существование токена верификации email в базе данных
+     * @param token токен верификации
+     * @return true если токен существует, false в противном случае
+     */
+    public static boolean emailVerificationTokenExists(String token) {
+        return StepLogger.log(
+            "Check if email verification token exists: " + token,
+            () -> {
+                String sql = "SELECT COUNT(*) FROM " + Table.EMAIL_VERIFICATION_TOKENS.getTable() + " WHERE token = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setString(1, token);
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        if (resultSet.next()) {
+                            return resultSet.getInt(1) > 0;
+                        }
+                        return false;
+                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to check if email verification token exists: " + token, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Проверяет существование токена сброса пароля в базе данных
+     * @param token токен сброса пароля
+     * @return true если токен существует, false в противном случае
+     */
+    public static boolean passwordResetTokenExists(String token) {
+        return StepLogger.log(
+            "Check if password reset token exists: " + token,
+            () -> {
+                String sql = "SELECT COUNT(*) FROM " + Table.PASSWORD_RESET_TOKENS.getTable() + " WHERE token = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setString(1, token);
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        if (resultSet.next()) {
+                            return resultSet.getInt(1) > 0;
+                        }
+                        return false;
+                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to check if password reset token exists: " + token, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Проверяет существование аналитики книги в базе данных
+     * @param bookAnalyticsId ID аналитики
+     * @return true если аналитика существует, false в противном случае
+     */
+    public static boolean bookAnalyticsExists(Long bookAnalyticsId) {
+        return StepLogger.log(
+            "Check if book analytics exists: " + bookAnalyticsId,
+            () -> {
+                String sql = "SELECT COUNT(*) FROM " + Table.BOOK_ANALYTICS.getTable() + " WHERE id = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setLong(1, bookAnalyticsId);
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        if (resultSet.next()) {
+                            return resultSet.getInt(1) > 0;
+                        }
+                        return false;
+                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to check if book analytics exists: " + bookAnalyticsId, e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Проверяет существование системной аналитики в базе данных
+     * @param systemAnalyticsId ID аналитики
+     * @return true если аналитика существует, false в противном случае
+     */
+    public static boolean systemAnalyticsExists(Long systemAnalyticsId) {
+        return StepLogger.log(
+            "Check if system analytics exists: " + systemAnalyticsId,
+            () -> {
+                String sql = "SELECT COUNT(*) FROM " + Table.SYSTEM_ANALYTICS.getTable() + " WHERE id = ?";
+                try (Connection connection = getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    
+                    statement.setLong(1, systemAnalyticsId);
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        if (resultSet.next()) {
+                            return resultSet.getInt(1) > 0;
+                        }
+                        return false;
+                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to check if system analytics exists: " + systemAnalyticsId, e);
                 }
             }
         );

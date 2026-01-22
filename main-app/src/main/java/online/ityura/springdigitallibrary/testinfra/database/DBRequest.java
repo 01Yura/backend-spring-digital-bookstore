@@ -2,9 +2,15 @@ package online.ityura.springdigitallibrary.testinfra.database;
 
 import online.ityura.springdigitallibrary.model.Author;
 import online.ityura.springdigitallibrary.model.Book;
+import online.ityura.springdigitallibrary.model.BookAnalytics;
+import online.ityura.springdigitallibrary.model.EmailVerificationToken;
+import online.ityura.springdigitallibrary.model.PasswordResetToken;
+import online.ityura.springdigitallibrary.model.Purchase;
+import online.ityura.springdigitallibrary.model.PurchaseStatus;
 import online.ityura.springdigitallibrary.model.Rating;
 import online.ityura.springdigitallibrary.model.Review;
 import online.ityura.springdigitallibrary.model.Role;
+import online.ityura.springdigitallibrary.model.SystemAnalytics;
 import online.ityura.springdigitallibrary.model.User;
 import online.ityura.springdigitallibrary.testinfra.configs.Config;
 import lombok.Builder;
@@ -115,6 +121,11 @@ public class DBRequest {
                         clazz == Book.class ? mapToBook(resultSet) :
                         clazz == Review.class ? mapToReview(resultSet) :
                         clazz == Rating.class ? mapToRating(resultSet) :
+                        clazz == Purchase.class ? mapToPurchase(resultSet) :
+                        clazz == EmailVerificationToken.class ? mapToEmailVerificationToken(resultSet) :
+                        clazz == PasswordResetToken.class ? mapToPasswordResetToken(resultSet) :
+                        clazz == BookAnalytics.class ? mapToBookAnalytics(resultSet) :
+                        clazz == SystemAnalytics.class ? mapToSystemAnalytics(resultSet) :
                         null);
                 if (result == null) {
                     throw new UnsupportedOperationException("Mapping for " + clazz.getSimpleName() + " not implemented");
@@ -347,6 +358,268 @@ public class DBRequest {
                     .value(resultSet.getShort("value"))
                     .createdAt(createdAt)
                     .updatedAt(updatedAt)
+                    .build();
+        }
+        return null;
+    }
+
+    /**
+     * Маппит ResultSet в объект Purchase
+     * 
+     * Этот метод извлекает данные из ResultSet и создает объект Purchase.
+     * Ожидает, что ResultSet содержит следующие колонки:
+     * - id (Long) - ID покупки
+     * - user_id (Long) - ID пользователя
+     * - book_id (Long) - ID книги
+     * - stripe_payment_intent_id (String) - ID платежного намерения Stripe
+     * - amount_paid (BigDecimal) - сумма оплаты
+     * - status (String) - статус покупки (PENDING, COMPLETED, FAILED, REFUNDED)
+     * - created_at (Timestamp) - дата создания
+     * - updated_at (Timestamp) - дата обновления
+     * 
+     * @param resultSet результат SQL запроса
+     * @return объект Purchase или null, если данных нет
+     * @throws SQLException если произошла ошибка при чтении данных
+     */
+    private Purchase mapToPurchase(ResultSet resultSet) throws SQLException {
+        if (resultSet.next()) {
+            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+            
+            Timestamp updatedAtTimestamp = resultSet.getTimestamp("updated_at");
+            LocalDateTime updatedAt = updatedAtTimestamp != null ? updatedAtTimestamp.toLocalDateTime() : null;
+            
+            Long bookId = resultSet.getLong("book_id");
+            Book book = null;
+            if (!resultSet.wasNull() && bookId != null) {
+                book = Book.builder().id(bookId).build();
+            }
+            
+            Long userId = resultSet.getLong("user_id");
+            User user = null;
+            if (!resultSet.wasNull() && userId != null) {
+                user = User.builder().id(userId).build();
+            }
+            
+            String statusStr = resultSet.getString("status");
+            PurchaseStatus status = null;
+            if (statusStr != null) {
+                try {
+                    status = PurchaseStatus.valueOf(statusStr);
+                } catch (IllegalArgumentException e) {
+                    // Если значение не найдено в enum, оставляем null
+                }
+            }
+            
+            return Purchase.builder()
+                    .id(resultSet.getLong("id"))
+                    .user(user)
+                    .book(book)
+                    .stripePaymentIntentId(resultSet.getString("stripe_payment_intent_id"))
+                    .amountPaid(resultSet.getBigDecimal("amount_paid"))
+                    .status(status)
+                    .createdAt(createdAt)
+                    .updatedAt(updatedAt)
+                    .build();
+        }
+        return null;
+    }
+
+    /**
+     * Маппит ResultSet в объект EmailVerificationToken
+     * 
+     * Этот метод извлекает данные из ResultSet и создает объект EmailVerificationToken.
+     * Ожидает, что ResultSet содержит следующие колонки:
+     * - id (Long) - ID токена
+     * - token (String) - токен верификации
+     * - user_id (Long) - ID пользователя
+     * - expires_at (Timestamp) - дата истечения
+     * - created_at (Timestamp) - дата создания
+     * - used (Boolean) - флаг использования токена
+     * 
+     * @param resultSet результат SQL запроса
+     * @return объект EmailVerificationToken или null, если данных нет
+     * @throws SQLException если произошла ошибка при чтении данных
+     */
+    private EmailVerificationToken mapToEmailVerificationToken(ResultSet resultSet) throws SQLException {
+        if (resultSet.next()) {
+            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+            
+            Timestamp expiresAtTimestamp = resultSet.getTimestamp("expires_at");
+            LocalDateTime expiresAt = expiresAtTimestamp != null ? expiresAtTimestamp.toLocalDateTime() : null;
+            
+            Long userId = resultSet.getLong("user_id");
+            User user = null;
+            if (!resultSet.wasNull() && userId != null) {
+                user = User.builder().id(userId).build();
+            }
+            
+            return EmailVerificationToken.builder()
+                    .id(resultSet.getLong("id"))
+                    .token(resultSet.getString("token"))
+                    .user(user)
+                    .expiresAt(expiresAt)
+                    .createdAt(createdAt)
+                    .used(resultSet.getBoolean("used"))
+                    .build();
+        }
+        return null;
+    }
+
+    /**
+     * Маппит ResultSet в объект PasswordResetToken
+     * 
+     * Этот метод извлекает данные из ResultSet и создает объект PasswordResetToken.
+     * Ожидает, что ResultSet содержит следующие колонки:
+     * - id (Long) - ID токена
+     * - token (String) - токен сброса пароля
+     * - user_id (Long) - ID пользователя
+     * - expires_at (Timestamp) - дата истечения
+     * - created_at (Timestamp) - дата создания
+     * - used (Boolean) - флаг использования токена
+     * 
+     * @param resultSet результат SQL запроса
+     * @return объект PasswordResetToken или null, если данных нет
+     * @throws SQLException если произошла ошибка при чтении данных
+     */
+    private PasswordResetToken mapToPasswordResetToken(ResultSet resultSet) throws SQLException {
+        if (resultSet.next()) {
+            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+            
+            Timestamp expiresAtTimestamp = resultSet.getTimestamp("expires_at");
+            LocalDateTime expiresAt = expiresAtTimestamp != null ? expiresAtTimestamp.toLocalDateTime() : null;
+            
+            Long userId = resultSet.getLong("user_id");
+            User user = null;
+            if (!resultSet.wasNull() && userId != null) {
+                user = User.builder().id(userId).build();
+            }
+            
+            return PasswordResetToken.builder()
+                    .id(resultSet.getLong("id"))
+                    .token(resultSet.getString("token"))
+                    .user(user)
+                    .expiresAt(expiresAt)
+                    .createdAt(createdAt)
+                    .used(resultSet.getBoolean("used"))
+                    .build();
+        }
+        return null;
+    }
+
+    /**
+     * Маппит ResultSet в объект BookAnalytics
+     * 
+     * Этот метод извлекает данные из ResultSet и создает объект BookAnalytics.
+     * Ожидает, что ResultSet содержит следующие колонки:
+     * - id (Long) - ID аналитики
+     * - book_id (Long) - ID книги
+     * - book_title (String) - название книги
+     * - book_genre (String) - жанр книги
+     * - view_count (Long) - количество просмотров
+     * - download_count (Long) - количество скачиваний
+     * - purchase_count (Long) - количество покупок
+     * - review_count (Long) - количество отзывов
+     * - rating_count (Long) - количество оценок
+     * - average_rating (BigDecimal) - средний рейтинг
+     * - total_revenue (BigDecimal) - общая выручка
+     * - unique_viewers (Integer) - уникальные просмотры
+     * - unique_downloaders (Integer) - уникальные скачивания
+     * - unique_purchasers (Integer) - уникальные покупки
+     * - aggregated_at (Timestamp) - дата агрегации
+     * - created_at (Timestamp) - дата создания
+     * 
+     * @param resultSet результат SQL запроса
+     * @return объект BookAnalytics или null, если данных нет
+     * @throws SQLException если произошла ошибка при чтении данных
+     */
+    private BookAnalytics mapToBookAnalytics(ResultSet resultSet) throws SQLException {
+        if (resultSet.next()) {
+            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+            
+            Timestamp aggregatedAtTimestamp = resultSet.getTimestamp("aggregated_at");
+            LocalDateTime aggregatedAt = aggregatedAtTimestamp != null ? aggregatedAtTimestamp.toLocalDateTime() : null;
+            
+            return BookAnalytics.builder()
+                    .id(resultSet.getLong("id"))
+                    .bookId(resultSet.getLong("book_id"))
+                    .bookTitle(resultSet.getString("book_title"))
+                    .bookGenre(resultSet.getString("book_genre"))
+                    .viewCount(resultSet.getObject("view_count", Long.class))
+                    .downloadCount(resultSet.getObject("download_count", Long.class))
+                    .purchaseCount(resultSet.getObject("purchase_count", Long.class))
+                    .reviewCount(resultSet.getObject("review_count", Long.class))
+                    .ratingCount(resultSet.getObject("rating_count", Long.class))
+                    .averageRating(resultSet.getBigDecimal("average_rating"))
+                    .totalRevenue(resultSet.getBigDecimal("total_revenue"))
+                    .uniqueViewers(resultSet.getObject("unique_viewers", Integer.class))
+                    .uniqueDownloaders(resultSet.getObject("unique_downloaders", Integer.class))
+                    .uniquePurchasers(resultSet.getObject("unique_purchasers", Integer.class))
+                    .aggregatedAt(aggregatedAt)
+                    .createdAt(createdAt)
+                    .build();
+        }
+        return null;
+    }
+
+    /**
+     * Маппит ResultSet в объект SystemAnalytics
+     * 
+     * Этот метод извлекает данные из ResultSet и создает объект SystemAnalytics.
+     * Ожидает, что ResultSet содержит следующие колонки:
+     * - id (Long) - ID аналитики
+     * - total_books (Integer) - общее количество книг
+     * - total_users (Integer) - общее количество пользователей
+     * - total_views (Long) - общее количество просмотров
+     * - total_downloads (Long) - общее количество скачиваний
+     * - total_purchases (Long) - общее количество покупок
+     * - total_revenue (BigDecimal) - общая выручка
+     * - total_reviews (Long) - общее количество отзывов
+     * - total_ratings (Long) - общее количество оценок
+     * - average_rating (BigDecimal) - средний рейтинг
+     * - average_review_length (BigDecimal) - средняя длина отзыва
+     * - most_popular_book_id (Long) - ID самой популярной книги
+     * - most_popular_book_title (String) - название самой популярной книги
+     * - top_genre (String) - топ жанр
+     * - top_genre_book_count (Integer) - количество книг в топ жанре
+     * - top_genre_total_views (Long) - общее количество просмотров топ жанра
+     * - aggregated_at (Timestamp) - дата агрегации
+     * - created_at (Timestamp) - дата создания
+     * 
+     * @param resultSet результат SQL запроса
+     * @return объект SystemAnalytics или null, если данных нет
+     * @throws SQLException если произошла ошибка при чтении данных
+     */
+    private SystemAnalytics mapToSystemAnalytics(ResultSet resultSet) throws SQLException {
+        if (resultSet.next()) {
+            Timestamp createdAtTimestamp = resultSet.getTimestamp("created_at");
+            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+            
+            Timestamp aggregatedAtTimestamp = resultSet.getTimestamp("aggregated_at");
+            LocalDateTime aggregatedAt = aggregatedAtTimestamp != null ? aggregatedAtTimestamp.toLocalDateTime() : null;
+            
+            return SystemAnalytics.builder()
+                    .id(resultSet.getLong("id"))
+                    .totalBooks(resultSet.getObject("total_books", Integer.class))
+                    .totalUsers(resultSet.getObject("total_users", Integer.class))
+                    .totalViews(resultSet.getObject("total_views", Long.class))
+                    .totalDownloads(resultSet.getObject("total_downloads", Long.class))
+                    .totalPurchases(resultSet.getObject("total_purchases", Long.class))
+                    .totalRevenue(resultSet.getBigDecimal("total_revenue"))
+                    .totalReviews(resultSet.getObject("total_reviews", Long.class))
+                    .totalRatings(resultSet.getObject("total_ratings", Long.class))
+                    .averageRating(resultSet.getBigDecimal("average_rating"))
+                    .averageReviewLength(resultSet.getBigDecimal("average_review_length"))
+                    .mostPopularBookId(resultSet.getObject("most_popular_book_id", Long.class))
+                    .mostPopularBookTitle(resultSet.getString("most_popular_book_title"))
+                    .topGenre(resultSet.getString("top_genre"))
+                    .topGenreBookCount(resultSet.getObject("top_genre_book_count", Integer.class))
+                    .topGenreTotalViews(resultSet.getObject("top_genre_total_views", Long.class))
+                    .aggregatedAt(aggregatedAt)
+                    .createdAt(createdAt)
                     .build();
         }
         return null;
