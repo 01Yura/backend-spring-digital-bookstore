@@ -157,8 +157,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # Хранение данных БД на хосте (для Windows используйте формат C:/path/to/dir)
-      - ${POSTGRES_DATA_PATH:-C:/spring-digital-bookstore/postgres_data}:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - spring-library-network
     healthcheck:
@@ -252,10 +251,8 @@ services:
     ports:
       - "8088:8080"
     volumes:
-      # Хранение изображений книг в обычной директории на хосте (для Windows используйте формат C:/path/to/dir)
-      - ${APP_IMAGES_STORAGE_PATH:-C:/spring-digital-bookstore/pictures}:/opt/spring-digital-bookstore/pictures
-      # Хранение PDF файлов книг в обычной директории на хосте (для Windows используйте формат C:/path/to/dir)
-      - ${APP_PDF_STORAGE_PATH:-C:/spring-digital-bookstore/pdf}:/opt/spring-digital-bookstore/pdf
+      - backend_pictures:/opt/spring-digital-bookstore/pictures
+      - backend_pdf:/opt/spring-digital-bookstore/pdf
     networks:
       - spring-library-network
     depends_on:
@@ -289,7 +286,7 @@ services:
         soft: 65536
         hard: 65536
     volumes:
-      - ${ELASTICSEARCH_DATA_PATH:-C:/spring-digital-bookstore/elasticsearch_data}:/usr/share/elasticsearch/data
+      - elasticsearch_data:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
       - "9300:9300"
@@ -315,7 +312,7 @@ services:
       elasticsearch:
         condition: service_healthy
     ports:
-      - "5000:5000"
+      - "5001:5000"   # Host 5001 to avoid conflict with macOS AirPlay (5000)
       - "5044:5044"
       - "9600:9600"
     environment:
@@ -429,8 +426,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      # Volume для хранения данных Prometheus (опционально для персистентности)
-      - ${PROMETHEUS_DATA_PATH:-C:/spring-digital-bookstore/prometheus_data}:/prometheus
+      - prometheus_data:/prometheus
     entrypoint:
       - /bin/sh
       - -c
@@ -465,9 +461,6 @@ services:
                   service: 'analytics-service'
                   application: 'analytics-service'
             scrape_interval: 10s
-          - job_name: 'windows'
-            static_configs:
-              - targets: ['192.168.0.22:9182']
         PROMETHEUS_EOF
         exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=15d --web.console.libraries=/usr/share/prometheus/console_libraries --web.console.templates=/usr/share/prometheus/consoles
     networks:
@@ -1230,3 +1223,10 @@ services:
 networks:
   spring-library-network:
     driver: bridge
+
+volumes:
+  postgres_data:
+  elasticsearch_data:
+  prometheus_data:
+  backend_pictures:
+  backend_pdf:
