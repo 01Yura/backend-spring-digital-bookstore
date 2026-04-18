@@ -5,8 +5,10 @@ import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import online.ityura.springdigitallibrary.dto.request.LoginRequest;
+import online.ityura.springdigitallibrary.dto.response.LoginResponse;
 import online.ityura.springdigitallibrary.testinfra.configs.Config;
 import online.ityura.springdigitallibrary.testinfra.helpers.CustomLoggingFilter;
+import online.ityura.springdigitallibrary.testinfra.requests.clients.Endpoint;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -43,27 +45,25 @@ public class RequestSpecs {
                 .build();
     }
 
-
     public static String getUserAccessToken(String email, String password) {
-        String accessToken;
-
         if (!accessTokens.containsKey(email)) {
-            accessToken =
-                    given()
-                            .spec(RequestSpecs.unauthSpec())
-                            .body(LoginRequest.builder().email(email).password(password).build())
-                            .when()
-                            .post("auth/login")
-                            .then()
-                            .statusCode(200)
-                            .extract()
-                            .path("accessToken");
-
-            accessTokens.put(email, accessToken);
-        } else {
-            accessToken = accessTokens.get(email);
+            loginAndStore(email, password);
         }
+        return accessTokens.get(email);
+    }
 
-        return accessToken;
+    private static LoginResponse loginAndStore(String email, String password) {
+        LoginResponse loginResponse = given()
+                .spec(unauthSpec())
+                .body(LoginRequest.builder().email(email).password(password).build())
+                .when()
+                .post(Endpoint.AUTH_LOGIN.getRelativePath())
+                .then()
+                .statusCode(200)
+                .extract()
+                .as(LoginResponse.class);
+        accessTokens.put(email, loginResponse.getAccessToken());
+        refreshTokens.put(email, loginResponse.getRefreshToken());
+        return loginResponse;
     }
 }
