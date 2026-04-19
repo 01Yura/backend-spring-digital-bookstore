@@ -25,7 +25,7 @@ import java.util.stream.Stream;
 
 public class UserRegistrationTest extends BaseApiTest {
 
-    static Stream<Arguments> argsFor_userCanLoginWithValidData() {
+    static Stream<Arguments> argsFor_userCanRegisterWithValidNickname() {
         return Stream.of(
 //            Nickname field validation (positive):
                 // 1) Length (BVA - Boundary Value Analysis)
@@ -108,7 +108,7 @@ public class UserRegistrationTest extends BaseApiTest {
                         RandomDataGenerator.CaseMode.MIXED) + "-"));
     }
 
-    static Stream<Arguments> argsFor_userCannotLoginWithInvalidData() {
+    static Stream<Arguments> argsFor_userCannotRegisterWithInvalidNickname() {
         return Stream.of(
 //            Nickname field validation (negative):
                 
@@ -204,8 +204,8 @@ public class UserRegistrationTest extends BaseApiTest {
     }
 
     @ParameterizedTest
-    @MethodSource("argsFor_userCanLoginWithValidData")
-    void userCanLoginWithValidData(String nickname) {
+    @MethodSource("argsFor_userCanRegisterWithValidNickname")
+    void userCanRegisterWithValidNickname(String nickname) {
 //        Create DTO object for request
         RegisterRequest registerRequest = RandomDtoGeneratorWithFaker.generateRandomDtoObject(RegisterRequest.class);
         registerRequest.setNickname(nickname);
@@ -243,8 +243,8 @@ public class UserRegistrationTest extends BaseApiTest {
     }
 
     @ParameterizedTest()
-    @MethodSource("argsFor_userCannotLoginWithInvalidData")
-    void userCannotLoginWithInvalidData(String nickname, String error, String message, String fieldName,
+    @MethodSource("argsFor_userCannotRegisterWithInvalidNickname")
+    void userCannotRegisterWithInvalidNickname(String nickname, String error, String message, String fieldName,
                                         String fieldError) {
 //        Create DTO object for request
         RegisterRequest registerRequest = RandomDtoGeneratorWithFaker.generateRandomDtoObject(RegisterRequest.class);
