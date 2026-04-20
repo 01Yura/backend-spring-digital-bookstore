@@ -1,12 +1,16 @@
 package online.ityura.springdigitallibrary.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import online.ityura.springdigitallibrary.dto.response.ErrorResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -17,11 +21,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.web.AuthenticationEntryPoint;
-import org.springframework.security.web.access.AccessDeniedHandler;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 
 @Configuration
 @EnableWebSecurity
@@ -47,8 +52,30 @@ public class SecurityConfig {
         return config.getAuthenticationManager();
     }
     
+    /**
+     * Same JSON shape as {@link online.ityura.springdigitallibrary.exception.GlobalExceptionHandler} (ErrorResponse).
+     */
+    private static void writeErrorResponse(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            HttpStatus httpStatus,
+            String errorCode,
+            ObjectMapper objectMapper) throws IOException {
+        ErrorResponse body = ErrorResponse.builder()
+                .status(httpStatus.value())
+                .error(errorCode)
+                .message(httpStatus.getReasonPhrase())
+                .timestamp(Instant.now())
+                .path(request.getRequestURI())
+                .build();
+        response.setStatus(httpStatus.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        objectMapper.writeValue(response.getWriter(), body);
+    }
+
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
@@ -93,34 +120,19 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .exceptionHandling(exceptions -> exceptions
-                .authenticationEntryPoint(new AuthenticationEntryPoint() {
-                    @Override
-                    public void commence(HttpServletRequest request, HttpServletResponse response,
-                            AuthenticationException authException) throws IOException {
-                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                        response.setContentType("application/json");
-                        response.setCharacterEncoding("UTF-8");
-                        response.getWriter().write("{\"message\":\"Unauthorized\"}");
-                    }
-                })
-                .accessDeniedHandler(new AccessDeniedHandler() {
-                    @Override
-                    public void handle(HttpServletRequest request, HttpServletResponse response,
-                            AccessDeniedException accessDeniedException) throws IOException {
-                        // Если пользователь не авторизован, возвращаем 401, иначе 403
-                        if (SecurityContextHolder.getContext().getAuthentication() == null ||
-                            !SecurityContextHolder.getContext().getAuthentication().isAuthenticated() ||
-                            "anonymousUser".equals(SecurityContextHolder.getContext().getAuthentication().getPrincipal())) {
-                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                            response.setContentType("application/json");
-                            response.setCharacterEncoding("UTF-8");
-                            response.getWriter().write("{\"message\":\"Unauthorized\"}");
-                        } else {
-                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-                            response.setContentType("application/json");
-                            response.setCharacterEncoding("UTF-8");
-                            response.getWriter().write("{\"message\":\"Forbidden\"}");
-                        }
+                .authenticationEntryPoint((HttpServletRequest request, HttpServletResponse response,
+                        AuthenticationException authException) ->
+                        writeErrorResponse(request, response, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", objectMapper))
+                .accessDeniedHandler((HttpServletRequest request, HttpServletResponse response,
+                        AccessDeniedException accessDeniedException) -> {
+                    // Если пользователь не авторизован, возвращаем 401, иначе 403
+                    if (SecurityContextHolder.getContext().getAuthentication() == null
+                            || !SecurityContextHolder.getContext().getAuthentication().isAuthenticated()
+                            || "anonymousUser".equals(
+                                    SecurityContextHolder.getContext().getAuthentication().getPrincipal())) {
+                        writeErrorResponse(request, response, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", objectMapper);
+                    } else {
+                        writeErrorResponse(request, response, HttpStatus.FORBIDDEN, "ACCESS_DENIED", objectMapper);
                     }
                 })
             )

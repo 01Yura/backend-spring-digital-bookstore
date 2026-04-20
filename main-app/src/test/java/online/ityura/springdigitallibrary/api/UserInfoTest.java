@@ -2,6 +2,7 @@ package online.ityura.springdigitallibrary.api;
 
 import online.ityura.springdigitallibrary.dto.response.ErrorResponse;
 import online.ityura.springdigitallibrary.dto.response.UserInfoResponse;
+import online.ityura.springdigitallibrary.model.Role;
 import online.ityura.springdigitallibrary.model.User;
 import online.ityura.springdigitallibrary.testinfra.comparators.UniversalComparator;
 import online.ityura.springdigitallibrary.testinfra.database.DataBaseSteps;
@@ -30,7 +31,7 @@ public class UserInfoTest extends BaseApiTest {
         // Assert: Verify user info
         softly.assertThat(userInfo).isNotNull();
         softly.assertThat(userInfo.getId()).isEqualTo(registeredUser.getRegisterResponse().getUserId());
-        softly.assertThat(userInfo.getRole()).isEqualTo("USER");
+        softly.assertThat(userInfo.getRole()).isEqualTo(Role.USER);
         
         // Compare UserInfoResponse with RegisterRequest using UniversalComparator
         UniversalComparator.match(userInfo, registeredUser.getRegisterRequest());

@@ -1,8 +1,6 @@
 package online.ityura.springdigitallibrary.api;
 
-import io.restassured.common.mapper.TypeRef;
 import online.ityura.springdigitallibrary.dto.request.CreateRatingRequest;
-import online.ityura.springdigitallibrary.dto.response.BookResponse;
 import online.ityura.springdigitallibrary.dto.response.ErrorResponse;
 import online.ityura.springdigitallibrary.dto.response.RatingResponse;
 import online.ityura.springdigitallibrary.model.Rating;
@@ -16,8 +14,6 @@ import online.ityura.springdigitallibrary.testinfra.specs.ResponseSpecs;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.data.domain.Page;
-
 
 public class RatingCreationTest extends BaseApiTest {
 
@@ -26,17 +22,7 @@ public class RatingCreationTest extends BaseApiTest {
         // Arrange: Register and verify user, get a book
         UserSteps.RegisteredUser registeredUser = UserSteps.registerAndVerifyRandomUser();
         
-        // Get first available book via API
-        Page<BookResponse> booksPage = new CrudRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.statusCode(200),
-                Endpoint.BOOKS)
-                .get()
-                .extract()
-                .as(new TypeRef<Page<BookResponse>>() {});
-        
-        softly.assertThat(booksPage.getContent()).isNotEmpty();
-        Long bookId = booksPage.getContent().get(0).getId();
+        Long bookId = fetchFirstBookIdViaApi();
         
         // Create rating request
         CreateRatingRequest ratingRequest = new CreateRatingRequest();
@@ -74,17 +60,7 @@ public class RatingCreationTest extends BaseApiTest {
         // Arrange: Register and verify user, get a book
         UserSteps.RegisteredUser registeredUser = UserSteps.registerAndVerifyRandomUser();
         
-        // Get first available book via API
-        Page<BookResponse> booksPage = new CrudRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.statusCode(200),
-                Endpoint.BOOKS)
-                .get()
-                .extract()
-                .as(new TypeRef<Page<BookResponse>>() {});
-        
-        softly.assertThat(booksPage.getContent()).isNotEmpty();
-        Long bookId = booksPage.getContent().get(0).getId();
+        Long bookId = fetchFirstBookIdViaApi();
         
         CreateRatingRequest ratingRequest = new CreateRatingRequest();
         ratingRequest.setValue(ratingValue);
@@ -104,16 +80,7 @@ public class RatingCreationTest extends BaseApiTest {
     @Test
     void userCannotCreateRatingWithoutAuthentication() {
         // Arrange: Get a book via API, no authentication
-        Page<BookResponse> booksPage = new CrudRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.statusCode(200),
-                Endpoint.BOOKS)
-                .get()
-                .extract()
-                .as(new TypeRef<Page<BookResponse>>() {});
-        
-        softly.assertThat(booksPage.getContent()).isNotEmpty();
-        Long bookId = booksPage.getContent().get(0).getId();
+        Long bookId = fetchFirstBookIdViaApi();
         
         CreateRatingRequest ratingRequest = new CreateRatingRequest();
         ratingRequest.setValue((short) 8);
@@ -138,17 +105,7 @@ public class RatingCreationTest extends BaseApiTest {
         // Arrange: Register and verify user, get a book
         UserSteps.RegisteredUser registeredUser = UserSteps.registerAndVerifyRandomUser();
         
-        // Get first available book via API
-        Page<BookResponse> booksPage = new CrudRequester(
-                RequestSpecs.unauthSpec(),
-                ResponseSpecs.statusCode(200),
-                Endpoint.BOOKS)
-                .get()
-                .extract()
-                .as(new TypeRef<Page<BookResponse>>() {});
-        
-        softly.assertThat(booksPage.getContent()).isNotEmpty();
-        Long bookId = booksPage.getContent().get(0).getId();
+        Long bookId = fetchFirstBookIdViaApi();
         
         CreateRatingRequest ratingRequest = new CreateRatingRequest();
         ratingRequest.setValue(invalidValue);
@@ -189,5 +146,18 @@ public class RatingCreationTest extends BaseApiTest {
         softly.assertThat(errorResponse).isNotNull();
         softly.assertThat(errorResponse.getStatus()).isEqualTo(404);
         softly.assertThat(errorResponse.getError()).isEqualTo("BOOK_NOT_FOUND");
+    }
+
+    private Long fetchFirstBookIdViaApi() {
+        Long bookId = new CrudRequester(
+                RequestSpecs.unauthSpec(),
+                ResponseSpecs.statusCode(200),
+                Endpoint.BOOKS)
+                .get()
+                .extract()
+                .jsonPath()
+                .getLong("content[0].id");
+        softly.assertThat(bookId).isNotNull();
+        return bookId;
     }
 }
